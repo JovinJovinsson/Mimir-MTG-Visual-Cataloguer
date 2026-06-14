@@ -270,13 +270,29 @@ function phaseLabel(phase: BootstrapPhase): string {
   }
 }
 
+function downloadDetail(s: BootstrapStatusDto): string {
+  if (s.phase === 'ingesting' && s.totalCards) {
+    return `${s.ingestedCards.toLocaleString()} / ${s.totalCards.toLocaleString()} cards`;
+  }
+  if (s.phase === 'downloading' && s.totalBytes) {
+    return `${formatBytes(s.downloadedBytes)} / ${formatBytes(s.totalBytes)}`;
+  }
+  return '';
+}
+
 function progressPercent(s: BootstrapStatusDto): number {
   if (s.phase === 'done') return 100;
   if (s.phase === 'ingesting' && s.totalCards) {
     return Math.min(100, Math.round((s.ingestedCards / s.totalCards) * 100));
   }
-  if (s.phase === 'downloading') return 15;
-  if (s.phase === 'fetching-manifest') return 5;
+  if (s.phase === 'downloading') {
+    if (s.totalBytes && s.downloadedBytes > 0) {
+      // Reserve 0-80% for download, 80-100% for ingesting
+      return Math.min(80, Math.round((s.downloadedBytes / s.totalBytes) * 80));
+    }
+    return 5;
+  }
+  if (s.phase === 'fetching-manifest') return 2;
   return 0;
 }
 
@@ -285,10 +301,7 @@ function applyStatusToBanner(s: BootstrapStatusDto): void {
     !wizardOverlay.hidden ? false : s.phase !== 'idle' && s.phase !== 'done';
   bannerEl.hidden = !showBanner;
   bannerPhase.textContent = phaseLabel(s.phase);
-  bannerDetail.textContent =
-    s.phase === 'ingesting' && s.totalCards
-      ? `${s.ingestedCards.toLocaleString()} / ${s.totalCards.toLocaleString()} cards`
-      : '';
+  bannerDetail.textContent = downloadDetail(s);
   bannerFill.style.width = `${progressPercent(s)}%`;
 }
 
@@ -304,17 +317,14 @@ function applyStatusToWizard(s: BootstrapStatusDto): void {
     wizardProgress.hidden = true;
     wizardError.hidden = false;
     wizardOptions.hidden = false;
-    wizardErrorMessage.textContent = s.error ?? 'Unknown error';
+    wizardErrorMessage.textContent = s.error || 'Unknown error';
     return;
   }
   wizardOptions.hidden = true;
   wizardError.hidden = true;
   wizardProgress.hidden = false;
   wizardPhaseLabel.textContent = phaseLabel(s.phase);
-  wizardProgressCount.textContent =
-    s.phase === 'ingesting' && s.totalCards
-      ? `${s.ingestedCards.toLocaleString()} / ${s.totalCards.toLocaleString()}`
-      : '';
+  wizardProgressCount.textContent = downloadDetail(s);
   wizardProgressFill.style.width = `${progressPercent(s)}%`;
   wizardClose.hidden = s.phase !== 'done';
 }

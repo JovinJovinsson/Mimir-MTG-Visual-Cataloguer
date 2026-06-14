@@ -10,7 +10,7 @@ import {
 import { BootstrapOrchestrator } from './bootstrap.js';
 import {
   fetchBulkDataManifest,
-  fetchBulkData,
+  downloadBulkJson,
   RateLimiter,
   SCRYFALL_USER_AGENT,
   retryOn429,
@@ -66,9 +66,9 @@ app.whenReady().then(() => {
       await limiter.acquire();
       return retryOn429(() => fetchBulkDataManifest(bulkType), { maxRetries: 3 });
     },
-    fetchBulk: async (uri) => {
+    fetchBulk: async (uri, onProgress) => {
       await limiter.acquire();
-      return retryOn429(() => fetchBulkData(uri), { maxRetries: 3 });
+      return retryOn429(() => downloadBulkJson(uri, onProgress), { maxRetries: 3 });
     },
   });
 

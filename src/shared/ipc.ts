@@ -67,6 +67,7 @@ export interface BootstrapStatusDto {
   setCount: number;
   scannerGateOpen: boolean;
   totalBytes: number | null;
+  downloadedBytes: number;
   ingestedCards: number;
   totalCards: number | null;
   error: string | null;

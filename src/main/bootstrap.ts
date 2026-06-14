@@ -22,24 +22,31 @@ export interface BootstrapStatus {
   setCount: number;
   scannerGateOpen: boolean;
   totalBytes: number | null;
+  downloadedBytes: number;
   ingestedCards: number;
   totalCards: number | null;
   error: string | null;
   updatedAt: number;
 }
 
+export type DownloadProgressFn = (downloadedBytes: number, totalBytes: number | null) => void;
+
 export interface BootstrapDeps {
   index: ScryfallIndexDb;
   fetchManifest: (bulkType: 'default_cards') => Promise<BulkDataManifest>;
-  fetchBulk: (downloadUri: string) => Promise<ScryfallBulkCard[]>;
+  fetchBulk: (downloadUri: string, onProgress: DownloadProgressFn) => Promise<ScryfallBulkCard[]>;
   now?: () => number;
   batchSize?: number;
 }
+
+// Emit at most one progress event per this many bytes to avoid flooding IPC.
+const PROGRESS_EMIT_INTERVAL_BYTES = 1024 * 1024; // 1 MB
 
 export class BootstrapOrchestrator extends EventEmitter {
   private phase: BootstrapPhase = 'idle';
   private error: string | null = null;
   private totalBytes: number | null = null;
+  private downloadedBytes = 0;
   private ingestedCards = 0;
   private totalCards: number | null = null;
   private running = false;
@@ -56,6 +63,7 @@ export class BootstrapOrchestrator extends EventEmitter {
       setCount: indexState.setCount,
       scannerGateOpen: indexState.cardCount > 0,
       totalBytes: this.totalBytes,
+      downloadedBytes: this.downloadedBytes,
       ingestedCards: this.ingestedCards,
       totalCards: this.totalCards,
       error: this.error,
@@ -70,6 +78,7 @@ export class BootstrapOrchestrator extends EventEmitter {
     this.ingestedCards = 0;
     this.totalCards = null;
     this.totalBytes = null;
+    this.downloadedBytes = 0;
 
     try {
       const plan = planScryfallBootstrap(selection, this.deps.index.getIndexState());
@@ -83,7 +92,15 @@ export class BootstrapOrchestrator extends EventEmitter {
       this.totalBytes = manifest.size ?? null;
 
       this.setPhase('downloading');
-      const cards = await this.deps.fetchBulk(manifest.download_uri);
+      let lastEmitAt = 0;
+      const cards = await this.deps.fetchBulk(manifest.download_uri, (downloaded, total) => {
+        this.downloadedBytes = downloaded;
+        if (total != null) this.totalBytes = total;
+        if (downloaded - lastEmitAt >= PROGRESS_EMIT_INTERVAL_BYTES) {
+          lastEmitAt = downloaded;
+          this.emit('progress', this.status());
+        }
+      });
       this.totalCards = cards.length;
 
       this.setPhase('ingesting');
@@ -97,7 +114,12 @@ export class BootstrapOrchestrator extends EventEmitter {
 
       this.setPhase('done');
     } catch (err) {
-      this.error = err instanceof Error ? err.message : String(err);
+      if (err instanceof Error) {
+        this.error = err.message || err.name || 'Download failed';
+      } else {
+        this.error = String(err);
+      }
+      console.error('[bootstrap] error:', err);
       this.setPhase('error');
     } finally {
       this.running = false;
