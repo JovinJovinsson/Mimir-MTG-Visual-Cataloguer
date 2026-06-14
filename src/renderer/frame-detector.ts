@@ -212,8 +212,18 @@ export function detectCard(
 
   const blurred = blur5(gray, sw, sh);
   const edges = sobel(blurred, sw, sh);
-  const binary = threshold(edges, sw * sh, 25);
+  // Higher threshold: only strong edges (card borders) fire.
+  // 45 eliminates most background gradients without losing card outlines.
+  const binary = threshold(edges, sw * sh, 45);
   const dilated = dilate3(binary, sw, sh);
+
+  const frameArea = sw * sh;
+  // Card must occupy 4–75% of the (half-res) frame area to be plausible.
+  const MIN_AREA = frameArea * 0.04;
+  const MAX_AREA = frameArea * 0.75;
+  // Minimum edge-pixel count per component: a card border at this scale
+  // needs at least ~300 edge pixels to form a detectable closed rectangle.
+  const MIN_COMPONENT = 300;
 
   const visited = new Uint8Array(sw * sh);
   let bestQuad: Quad | null = null;
@@ -222,7 +232,7 @@ export function detectCard(
   for (let i = 0; i < sw * sh; i++) {
     if (dilated[i]! === 255 && !visited[i]!) {
       const comp = bfs(dilated, sw, sh, i, visited);
-      if (comp.length < 80) continue;
+      if (comp.length < MIN_COMPONENT) continue;
 
       const hull = convexHull(comp);
       if (hull.length < 4) continue;
@@ -230,14 +240,19 @@ export function detectCard(
       const poly = approxPoly(hull, 0.025);
       if (poly.length !== 4) continue;
 
+      const area = polyArea(poly);
+      // Reject quads that are too small (noise) or too large (entire frame).
+      if (area < MIN_AREA || area > MAX_AREA) continue;
+
+      // MTG card aspect ratio: 63×88mm ≈ 0.716:1. Allow perspective distortion
+      // up to ~45° which compresses one axis by ~0.7×, giving ~0.5:1 – 1.85:1.
       const xs = poly.map((p) => p.x);
       const ys = poly.map((p) => p.y);
       const bw = Math.max(...xs) - Math.min(...xs);
       const bh = Math.max(...ys) - Math.min(...ys);
       const ar = bh > 0 ? bw / bh : 0;
-      if (ar < 0.4 || ar > 2.5) continue;
+      if (ar < 0.5 || ar > 1.85) continue;
 
-      const area = polyArea(poly);
       if (area > bestArea) {
         bestArea = area;
         bestQuad = orderQuad(poly);
