@@ -12,68 +12,102 @@
         <div class="sidebar-brand">Mimir</div>
         <nav>
           <ul>
-            <li class="active">
+            <li class="nav-item active" data-page="catalogue">
               <span class="label">Inbox</span>
               <span class="count" id="inbox-count">0</span>
             </li>
-            <li class="scanner-row" id="scanner-row">
+            <li class="nav-item scanner-row" id="scanner-row" data-page="scan">
               <span class="label">Scan</span>
               <span class="gate-state" id="scanner-gate">locked</span>
+            </li>
+            <li class="nav-item" data-page="sets">
+              <span class="label">Manage Sets</span>
+              <span class="count" id="sets-count">—</span>
             </li>
           </ul>
         </nav>
       </aside>
 
       <main id="main">
-        <header class="main-header">
-          <h1>Catalogue</h1>
-          <form id="add-card-form" class="add-form" autocomplete="off">
-            <label for="card-name-input">Add by name</label>
-            <div class="autocomplete-wrap">
-              <input
-                type="text"
-                id="card-name-input"
-                name="card_name"
-                placeholder="e.g. Lightning Bolt"
-                spellcheck="false"
-                autocomplete="off"
-              />
-              <ul id="autocomplete-list" class="autocomplete-list" hidden></ul>
+        <section id="page-catalogue" class="page" data-page="catalogue">
+          <header class="main-header">
+            <h1>Catalogue</h1>
+            <form id="add-card-form" class="add-form" autocomplete="off">
+              <label for="card-name-input">Add by name</label>
+              <div class="autocomplete-wrap">
+                <input
+                  type="text"
+                  id="card-name-input"
+                  name="card_name"
+                  placeholder="e.g. Lightning Bolt"
+                  spellcheck="false"
+                  autocomplete="off"
+                />
+                <ul id="autocomplete-list" class="autocomplete-list" hidden></ul>
+              </div>
+              <button type="submit" disabled>Add</button>
+            </form>
+          </header>
+          <div id="status" class="status" role="status" aria-live="polite"></div>
+
+          <div id="bootstrap-banner" class="bootstrap-banner" hidden>
+            <div class="bootstrap-banner-text">
+              <span id="bootstrap-banner-phase">Downloading Scryfall card data…</span>
+              <span id="bootstrap-banner-detail" class="muted"></span>
             </div>
-            <button type="submit" disabled>Add</button>
-          </form>
-        </header>
-        <div id="status" class="status" role="status" aria-live="polite"></div>
-
-        <div id="bootstrap-banner" class="bootstrap-banner" hidden>
-          <div class="bootstrap-banner-text">
-            <span id="bootstrap-banner-phase">Downloading Scryfall card data…</span>
-            <span id="bootstrap-banner-detail" class="muted"></span>
+            <div class="progress-bar"><div class="progress-bar-fill" id="bootstrap-banner-fill"></div></div>
           </div>
-          <div class="progress-bar"><div class="progress-bar-fill" id="bootstrap-banner-fill"></div></div>
-        </div>
 
-        <section class="table-wrap">
-          <table id="catalogue-table">
-            <thead>
-              <tr>
-                <th class="col-thumb">Thumb</th>
-                <th class="col-name">Name</th>
-                <th class="col-set">Set</th>
-                <th class="col-cn">#</th>
-                <th class="col-qty">Qty</th>
-                <th class="col-foil">Foil</th>
-                <th class="col-cond">Cond</th>
-                <th class="col-price">Price (USD)</th>
-                <th class="col-seen">Last seen</th>
-              </tr>
-            </thead>
-            <tbody id="catalogue-body">
-              <tr class="empty-row">
-                <td colspan="9">No cards yet — add one by name above.</td>
-              </tr>
-            </tbody>
-          </table>
+          <div class="table-wrap">
+            <table id="catalogue-table">
+              <thead>
+                <tr>
+                  <th class="col-thumb">Thumb</th>
+                  <th class="col-name">Name</th>
+                  <th class="col-set">Set</th>
+                  <th class="col-cn">#</th>
+                  <th class="col-qty">Qty</th>
+                  <th class="col-foil">Foil</th>
+                  <th class="col-cond">Cond</th>
+                  <th class="col-price">Price (USD)</th>
+                  <th class="col-seen">Last seen</th>
+                </tr>
+              </thead>
+              <tbody id="catalogue-body">
+                <tr class="empty-row">
+                  <td colspan="9">No cards yet — add one by name above.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="page-sets" class="page" data-page="sets" hidden>
+          <header class="main-header">
+            <h1>Manage Sets</h1>
+            <div class="sets-summary" id="sets-summary">Loading sets…</div>
+          </header>
+          <p class="sets-blurb">
+            Toggle a set on to download its art crops and compute pHashes locally. These power
+            visual recognition during scanning. Toggle off to free the disk.
+          </p>
+          <div class="sets-table-wrap">
+            <table id="sets-table">
+              <thead>
+                <tr>
+                  <th class="col-set-code">Code</th>
+                  <th class="col-set-name">Set</th>
+                  <th class="col-set-cards">Cards</th>
+                  <th class="col-set-disk">Disk</th>
+                  <th class="col-set-progress">Progress</th>
+                  <th class="col-set-toggle">Download</th>
+                </tr>
+              </thead>
+              <tbody id="sets-body">
+                <tr class="empty-row"><td colspan="6">No sets indexed yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
         </section>
       </main>
 

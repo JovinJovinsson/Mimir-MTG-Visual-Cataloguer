@@ -11,6 +11,10 @@ import {
   type BootstrapStatusDto,
   type ListCardsResponse,
   type MimirApi,
+  type SetProgressDto,
+  type SetsListResponse,
+  type SetsToggleDownloadRequest,
+  type SetsToggleDownloadResponse,
 } from '../shared/ipc.js';
 
 const api: MimirApi = {
@@ -31,6 +35,17 @@ const api: MimirApi = {
     ipcRenderer.on(IPC_CHANNELS.bootstrapProgress, listener);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.bootstrapProgress, listener);
+    };
+  },
+  setsList: (): Promise<SetsListResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.setsList),
+  setsToggleDownload: (req: SetsToggleDownloadRequest): Promise<SetsToggleDownloadResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.setsToggleDownload, req),
+  onSetsProgress: (cb: (event: SetProgressDto) => void) => {
+    const listener = (_event: unknown, e: SetProgressDto): void => cb(e);
+    ipcRenderer.on(IPC_CHANNELS.setsProgress, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.setsProgress, listener);
     };
   },
 };

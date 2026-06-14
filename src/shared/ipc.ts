@@ -8,6 +8,9 @@ export const IPC_CHANNELS = {
   bootstrapStatus: 'bootstrap:status',
   bootstrapStart: 'bootstrap:start',
   bootstrapProgress: 'bootstrap:progress',
+  setsList: 'sets:list',
+  setsToggleDownload: 'sets:toggleDownload',
+  setsProgress: 'sets:progress',
 } as const;
 
 export interface AddCardByIdRequest {
@@ -69,6 +72,39 @@ export interface BootstrapStatusDto {
 export type BootstrapStartRequest = { selection: 'full' };
 export type BootstrapStartResponse = { ok: true } | { ok: false; error: string };
 
+export type SetDownloadStatus = 'none' | 'downloading' | 'complete' | 'error';
+
+export interface SetWithStatusDto {
+  code: string;
+  name: string;
+  card_count: number;
+  hashed_count: number;
+  download_status: SetDownloadStatus;
+  is_downloaded: number;
+  estimated_disk_bytes: number;
+}
+
+export type SetsListResponse =
+  | { ok: true; sets: SetWithStatusDto[] }
+  | { ok: false; error: string };
+
+export interface SetsToggleDownloadRequest {
+  setCode: string;
+  enabled: boolean;
+}
+
+export type SetsToggleDownloadResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export interface SetProgressDto {
+  setCode: string;
+  downloaded: number;
+  failed: number;
+  total: number;
+  status: SetDownloadStatus;
+}
+
 export interface MimirApi {
   addCardById(req: AddCardByIdRequest): Promise<AddCardByIdResponse>;
   addCardByName(req: AddCardByNameRequest): Promise<AddCardByNameResponse>;
@@ -77,6 +113,9 @@ export interface MimirApi {
   bootstrapStatus(): Promise<BootstrapStatusDto>;
   bootstrapStart(req: BootstrapStartRequest): Promise<BootstrapStartResponse>;
   onBootstrapProgress(cb: (status: BootstrapStatusDto) => void): () => void;
+  setsList(): Promise<SetsListResponse>;
+  setsToggleDownload(req: SetsToggleDownloadRequest): Promise<SetsToggleDownloadResponse>;
+  onSetsProgress(cb: (event: SetProgressDto) => void): () => void;
 }
 
 declare global {

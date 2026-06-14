@@ -132,4 +132,54 @@ describe('openScryfallIndexDb', () => {
     expect(card?.name).toBe('Lightning Bolt');
     expect(card?.set_code).toBe('lea');
   });
+
+  describe('per-set download status', () => {
+    it('lists sets with card counts and default download_status = "none"', () => {
+      db.ingestBatches(planBulkIngest(sample));
+      const sets = db.listSetsWithStatus();
+      expect(sets.map((s) => s.code).sort()).toEqual(['lea', 'm10']);
+      const lea = sets.find((s) => s.code === 'lea');
+      expect(lea?.card_count).toBe(2);
+      expect(lea?.hashed_count).toBe(0);
+      expect(lea?.download_status).toBe('none');
+      expect(lea?.is_downloaded).toBe(0);
+    });
+
+    it('updates download status and is_downloaded flag', () => {
+      db.ingestBatches(planBulkIngest(sample));
+      db.setSetDownloadStatus('lea', 'downloading', false);
+      let sets = db.listSetsWithStatus();
+      expect(sets.find((s) => s.code === 'lea')?.download_status).toBe('downloading');
+      expect(sets.find((s) => s.code === 'lea')?.is_downloaded).toBe(0);
+
+      db.setSetDownloadStatus('lea', 'complete', true);
+      sets = db.listSetsWithStatus();
+      expect(sets.find((s) => s.code === 'lea')?.download_status).toBe('complete');
+      expect(sets.find((s) => s.code === 'lea')?.is_downloaded).toBe(1);
+    });
+
+    it('updates a card phash + art_crop_path and counts as hashed', () => {
+      db.ingestBatches(planBulkIngest(sample));
+      db.updateCardCrop('sf-bolt', 'deadbeefdeadbeef', '/tmp/lea/sf-bolt.jpg');
+      const sets = db.listSetsWithStatus();
+      const lea = sets.find((s) => s.code === 'lea');
+      expect(lea?.hashed_count).toBe(1);
+    });
+
+    it('clearSetCrops nulls phash and art_crop_path for every card in the set', () => {
+      db.ingestBatches(planBulkIngest(sample));
+      db.updateCardCrop('sf-bolt', 'h1', '/p/a.jpg');
+      db.updateCardCrop('sf-lotus', 'h2', '/p/b.jpg');
+      db.clearSetCrops('lea');
+      const sets = db.listSetsWithStatus();
+      expect(sets.find((s) => s.code === 'lea')?.hashed_count).toBe(0);
+    });
+
+    it('listSetCropRows returns the cards in a set with crop columns', () => {
+      db.ingestBatches(planBulkIngest(sample));
+      const rows = db.listSetCropRows('lea');
+      expect(rows.length).toBe(2);
+      expect(rows.every((r) => r.phash === null && r.art_crop_path === null)).toBe(true);
+    });
+  });
 });

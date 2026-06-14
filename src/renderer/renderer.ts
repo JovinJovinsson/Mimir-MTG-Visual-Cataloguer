@@ -3,6 +3,9 @@ import type {
   AutocompleteHitDto,
   BootstrapPhase,
   BootstrapStatusDto,
+  SetDownloadStatus,
+  SetProgressDto,
+  SetWithStatusDto,
 } from '../shared/ipc.js';
 
 const form = document.getElementById('add-card-form') as HTMLFormElement;
@@ -364,6 +367,191 @@ window.mimir.onBootstrapProgress((status) => {
   applyScannerGate(status);
 });
 
+// --- Manage Sets page ---
+
+const setsBody = document.getElementById('sets-body') as HTMLTableSectionElement;
+const setsSummary = document.getElementById('sets-summary') as HTMLDivElement;
+const setsCountBadge = document.getElementById('sets-count') as HTMLSpanElement;
+const navItems = Array.from(
+  document.querySelectorAll<HTMLLIElement>('#sidebar .nav-item'),
+);
+const pages = Array.from(document.querySelectorAll<HTMLElement>('main .page'));
+
+const setProgress = new Map<string, SetProgressDto>();
+let setsCache: SetWithStatusDto[] = [];
+
+function setActivePage(page: string): void {
+  for (const item of navItems) {
+    item.classList.toggle('active', item.dataset['page'] === page);
+  }
+  for (const section of pages) {
+    section.hidden = section.dataset['page'] !== page;
+  }
+  if (page === 'sets') {
+    void refreshSets();
+  }
+}
+
+for (const item of navItems) {
+  item.addEventListener('click', () => {
+    const page = item.dataset['page'];
+    if (!page) return;
+    // 'scan' is still locked / placeholder; clicking it should not navigate.
+    if (page === 'scan') return;
+    setActivePage(page);
+  });
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes <= 0) return '—';
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1024) return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`;
+  return `${(mb / 1024).toFixed(2)} GB`;
+}
+
+function statusLabel(s: SetDownloadStatus): string {
+  switch (s) {
+    case 'none': return 'Not downloaded';
+    case 'downloading': return 'Downloading…';
+    case 'complete': return 'Complete';
+    case 'error': return 'Partial / error';
+  }
+}
+
+function renderSetRow(set: SetWithStatusDto): HTMLTableRowElement {
+  const tr = document.createElement('tr');
+  tr.dataset['setCode'] = set.code;
+
+  const td = (cls: string, content: Node | string): HTMLTableCellElement => {
+    const cell = document.createElement('td');
+    cell.className = cls;
+    if (typeof content === 'string') cell.textContent = content;
+    else cell.appendChild(content);
+    return cell;
+  };
+
+  tr.appendChild(td('cell-set-code', set.code.toUpperCase()));
+  tr.appendChild(td('cell-set-name', set.name));
+  tr.appendChild(td('cell-set-cards', String(set.card_count)));
+  tr.appendChild(td('cell-set-disk', formatBytes(set.estimated_disk_bytes)));
+
+  const progressCell = document.createElement('td');
+  progressCell.className = 'cell-set-progress';
+  const live = setProgress.get(set.code);
+  const downloaded = live?.downloaded ?? set.hashed_count;
+  const total = live?.total ?? set.card_count;
+  const status = live?.status ?? set.download_status;
+  const pct = total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : (status === 'complete' ? 100 : 0);
+  const label = document.createElement('div');
+  label.className = 'set-progress-label';
+  const phase = document.createElement('span');
+  phase.className = `set-status set-status--${status}`;
+  phase.textContent = statusLabel(status);
+  const detail = document.createElement('span');
+  detail.className = 'muted';
+  detail.textContent =
+    status === 'downloading' || (status === 'error' && total > 0)
+      ? `${downloaded.toLocaleString()} / ${total.toLocaleString()}`
+      : status === 'complete' && total > 0
+        ? `${total.toLocaleString()} crops`
+        : '';
+  label.appendChild(phase);
+  label.appendChild(detail);
+  const bar = document.createElement('div');
+  bar.className = 'progress-bar';
+  const fill = document.createElement('div');
+  fill.className = 'progress-bar-fill';
+  fill.style.width = `${pct}%`;
+  bar.appendChild(fill);
+  progressCell.appendChild(label);
+  progressCell.appendChild(bar);
+  tr.appendChild(progressCell);
+
+  const toggleCell = document.createElement('td');
+  toggleCell.className = 'cell-set-toggle';
+  const label2 = document.createElement('label');
+  label2.className = 'switch';
+  const input2 = document.createElement('input');
+  input2.type = 'checkbox';
+  const enabled = set.is_downloaded === 1 || status === 'downloading';
+  input2.checked = enabled;
+  input2.disabled = status === 'downloading';
+  input2.addEventListener('change', async () => {
+    const wantEnabled = input2.checked;
+    input2.disabled = true;
+    const res = await window.mimir.setsToggleDownload({
+      setCode: set.code,
+      enabled: wantEnabled,
+    });
+    if (!res.ok) {
+      setStatus(res.error, 'error');
+      input2.checked = !wantEnabled;
+      input2.disabled = false;
+      return;
+    }
+    // refresh in a moment; progress events will keep state fresh.
+    setTimeout(() => { void refreshSets(); }, 80);
+  });
+  const slider = document.createElement('span');
+  slider.className = 'slider';
+  label2.appendChild(input2);
+  label2.appendChild(slider);
+  toggleCell.appendChild(label2);
+  tr.appendChild(toggleCell);
+
+  return tr;
+}
+
+function renderSetsTable(sets: SetWithStatusDto[]): void {
+  setsBody.innerHTML = '';
+  if (sets.length === 0) {
+    const tr = document.createElement('tr');
+    tr.className = 'empty-row';
+    const td = document.createElement('td');
+    td.colSpan = 6;
+    td.textContent = 'No sets indexed yet.';
+    tr.appendChild(td);
+    setsBody.appendChild(tr);
+    return;
+  }
+  for (const set of sets) setsBody.appendChild(renderSetRow(set));
+}
+
+function renderSetsSummary(sets: SetWithStatusDto[]): void {
+  const downloaded = sets.filter((s) => s.is_downloaded === 1).length;
+  setsSummary.textContent =
+    sets.length === 0
+      ? 'No sets indexed yet — finish the first-run bootstrap first.'
+      : `${downloaded.toLocaleString()} of ${sets.length.toLocaleString()} sets downloaded`;
+  setsCountBadge.textContent = sets.length === 0 ? '—' : `${downloaded}/${sets.length}`;
+}
+
+async function refreshSets(): Promise<void> {
+  const res = await window.mimir.setsList();
+  if (!res.ok) {
+    setStatus(`Failed to load sets: ${res.error}`, 'error');
+    return;
+  }
+  setsCache = res.sets;
+  renderSetsSummary(setsCache);
+  renderSetsTable(setsCache);
+}
+
+window.mimir.onSetsProgress((event) => {
+  setProgress.set(event.setCode, event);
+  // If the set finished, drop the live entry once a refresh confirms it.
+  if (event.status === 'complete' || event.status === 'none' || event.status === 'error') {
+    void refreshSets();
+  } else {
+    // patch the single row in place to keep the UI responsive
+    const row = setsBody.querySelector<HTMLTableRowElement>(`tr[data-set-code="${event.setCode}"]`);
+    const set = setsCache.find((s) => s.code === event.setCode);
+    if (row && set) {
+      row.replaceWith(renderSetRow(set));
+    }
+  }
+});
+
 void (async () => {
   const status = await window.mimir.bootstrapStatus();
   applyScannerGate(status);
@@ -376,4 +564,5 @@ void (async () => {
     applyStatusToBanner(status);
   }
   await refresh();
+  await refreshSets();
 })();

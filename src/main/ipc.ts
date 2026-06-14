@@ -10,10 +10,20 @@ import {
   type BootstrapStartResponse,
   type BootstrapStatusDto,
   type ListCardsResponse,
+  type SetProgressDto,
+  type SetWithStatusDto,
+  type SetsListResponse,
+  type SetsToggleDownloadRequest,
+  type SetsToggleDownloadResponse,
 } from '../shared/ipc.js';
 import type { CatalogueDb } from './database.js';
 import type { ScryfallIndexDb } from './scryfall-index.js';
 import type { BootstrapOrchestrator } from './bootstrap.js';
+import type {
+  ArtCropOrchestrator,
+  SetCropProgressEvent,
+} from './art-crop-orchestrator.js';
+import { estimateDiskUsageBytes } from './art-crop-planner.js';
 import { fetchScryfallCardById } from './scryfall.js';
 import type { CardForRenderer, Foil } from '../shared/types.js';
 
@@ -21,10 +31,11 @@ export interface IpcDeps {
   catalogue: CatalogueDb;
   index: ScryfallIndexDb;
   bootstrap: BootstrapOrchestrator;
+  artCrops: ArtCropOrchestrator;
 }
 
 export function registerIpcHandlers(deps: IpcDeps): void {
-  const { catalogue, index, bootstrap } = deps;
+  const { catalogue, index, bootstrap, artCrops } = deps;
 
   ipcMain.handle(
     IPC_CHANNELS.addCardById,
@@ -112,6 +123,42 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       }
     },
   );
+
+  ipcMain.handle(IPC_CHANNELS.setsList, async (): Promise<SetsListResponse> => {
+    try {
+      const sets: SetWithStatusDto[] = index.listSetsWithStatus().map((s) => ({
+        code: s.code,
+        name: s.name,
+        card_count: s.card_count,
+        hashed_count: s.hashed_count,
+        download_status: s.download_status,
+        is_downloaded: s.is_downloaded,
+        estimated_disk_bytes: estimateDiskUsageBytes(s.card_count),
+      }));
+      return { ok: true, sets };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err) };
+    }
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.setsToggleDownload,
+    async (
+      _event,
+      req: SetsToggleDownloadRequest,
+    ): Promise<SetsToggleDownloadResponse> => {
+      try {
+        if (req.enabled) {
+          void artCrops.startSetDownload(req.setCode);
+        } else {
+          void artCrops.removeSetCrops(req.setCode);
+        }
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
 }
 
 export function broadcastBootstrapProgress(
@@ -122,6 +169,20 @@ export function broadcastBootstrapProgress(
     for (const wc of webContentsList()) {
       if (!wc.isDestroyed()) {
         wc.send(IPC_CHANNELS.bootstrapProgress, status);
+      }
+    }
+  });
+}
+
+export function broadcastArtCropProgress(
+  webContentsList: () => WebContents[],
+  artCrops: ArtCropOrchestrator,
+): void {
+  artCrops.on('progress', (event: SetCropProgressEvent) => {
+    const dto: SetProgressDto = { ...event };
+    for (const wc of webContentsList()) {
+      if (!wc.isDestroyed()) {
+        wc.send(IPC_CHANNELS.setsProgress, dto);
       }
     }
   });

@@ -63,7 +63,18 @@ export const scryfallIndexMigrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 2,
+    up: (db) => {
+      db.exec(`
+        ALTER TABLE scryfall_sets ADD COLUMN download_status TEXT NOT NULL DEFAULT 'none';
+        ALTER TABLE scryfall_sets ADD COLUMN is_downloaded INTEGER NOT NULL DEFAULT 0;
+      `);
+    },
+  },
 ];
+
+export type SetDownloadStatus = 'none' | 'downloading' | 'complete' | 'error';
 
 const META_KEY_BULK_FETCHED_AT = 'bulk_data_last_fetched_at';
 
@@ -88,6 +99,22 @@ export interface AutocompleteHit {
   collector_number: string;
 }
 
+export interface ScryfallSetWithStatus {
+  code: string;
+  name: string;
+  card_count: number;
+  hashed_count: number;
+  download_status: SetDownloadStatus;
+  is_downloaded: number;
+}
+
+export interface ScryfallCardCropRow {
+  scryfall_id: string;
+  image_art_crop_url: string | null;
+  phash: string | null;
+  art_crop_path: string | null;
+}
+
 export interface ScryfallIndexDb {
   raw: Database.Database;
   getIndexState(): IndexState;
@@ -95,6 +122,15 @@ export interface ScryfallIndexDb {
   markBulkFetched(timestampMs: number): void;
   autocompleteByName(query: string, limit: number): AutocompleteHit[];
   getCardByScryfallId(id: string): ScryfallIndexCard | null;
+  listSetsWithStatus(): ScryfallSetWithStatus[];
+  listSetCropRows(setCode: string): ScryfallCardCropRow[];
+  setSetDownloadStatus(
+    setCode: string,
+    status: SetDownloadStatus,
+    isDownloaded: boolean,
+  ): void;
+  updateCardCrop(scryfallId: string, phash: string, artCropPath: string): void;
+  clearSetCrops(setCode: string): void;
   close(): void;
 }
 
@@ -189,6 +225,50 @@ function wrap(db: Database.Database): ScryfallIndexDb {
     WHERE scryfall_id = ?
   `);
 
+  const listSetsWithStatusStmt = db.prepare<[], ScryfallSetWithStatus>(`
+    SELECT
+      s.code AS code,
+      s.name AS name,
+      COALESCE(c.card_count, 0) AS card_count,
+      COALESCE(c.hashed_count, 0) AS hashed_count,
+      s.download_status AS download_status,
+      s.is_downloaded AS is_downloaded
+    FROM scryfall_sets s
+    LEFT JOIN (
+      SELECT
+        set_code,
+        COUNT(*) AS card_count,
+        SUM(CASE WHEN phash IS NOT NULL THEN 1 ELSE 0 END) AS hashed_count
+      FROM scryfall_cards
+      GROUP BY set_code
+    ) c ON c.set_code = s.code
+    ORDER BY s.name COLLATE NOCASE
+  `);
+
+  const listSetCropRowsStmt = db.prepare<[string], ScryfallCardCropRow>(`
+    SELECT scryfall_id, image_art_crop_url, phash, art_crop_path
+    FROM scryfall_cards
+    WHERE set_code = ?
+  `);
+
+  const updateSetStatusStmt = db.prepare(`
+    UPDATE scryfall_sets
+    SET download_status = @status, is_downloaded = @is_downloaded
+    WHERE code = @code
+  `);
+
+  const updateCardCropStmt = db.prepare(`
+    UPDATE scryfall_cards
+    SET phash = @phash, art_crop_path = @art_crop_path
+    WHERE scryfall_id = @scryfall_id
+  `);
+
+  const clearSetCropsStmt = db.prepare(`
+    UPDATE scryfall_cards
+    SET phash = NULL, art_crop_path = NULL
+    WHERE set_code = ?
+  `);
+
   return {
     raw: db,
 
@@ -237,6 +317,38 @@ function wrap(db: Database.Database): ScryfallIndexDb {
 
     getCardByScryfallId(id: string): ScryfallIndexCard | null {
       return getCardStmt.get(id) ?? null;
+    },
+
+    listSetsWithStatus(): ScryfallSetWithStatus[] {
+      return listSetsWithStatusStmt.all();
+    },
+
+    listSetCropRows(setCode: string): ScryfallCardCropRow[] {
+      return listSetCropRowsStmt.all(setCode);
+    },
+
+    setSetDownloadStatus(
+      setCode: string,
+      status: SetDownloadStatus,
+      isDownloaded: boolean,
+    ): void {
+      updateSetStatusStmt.run({
+        code: setCode,
+        status,
+        is_downloaded: isDownloaded ? 1 : 0,
+      });
+    },
+
+    updateCardCrop(scryfallId: string, phash: string, artCropPath: string): void {
+      updateCardCropStmt.run({
+        scryfall_id: scryfallId,
+        phash,
+        art_crop_path: artCropPath,
+      });
+    },
+
+    clearSetCrops(setCode: string): void {
+      clearSetCropsStmt.run(setCode);
     },
 
     close() {
