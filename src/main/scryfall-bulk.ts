@@ -1,4 +1,5 @@
-import { get as httpsGet } from 'node:https';
+import { Worker } from 'node:worker_threads';
+import { join } from 'node:path';
 import type { ScryfallBulkCard } from './scryfall-bootstrap.js';
 
 export const SCRYFALL_USER_AGENT =
@@ -71,50 +72,52 @@ export async function fetchBulkData(
 
 export type DownloadProgressFn = (downloadedBytes: number, totalBytes: number | null) => void;
 
-// Uses Node.js native https to bypass Electron's net.fetch body-size limits (~256 MB cap)
-// for the 500 MB+ Scryfall bulk JSON download.
+// Spawns a Worker thread that downloads and parses the bulk JSON off the main
+// thread entirely. The worker byte-scans the raw Buffer (no 512 MB string
+// limit) and streams parsed cards back in batches so the main thread stays
+// responsive throughout.
 export function downloadBulkJson(
   downloadUri: string,
   onProgress?: DownloadProgressFn,
 ): Promise<ScryfallBulkCard[]> {
   return new Promise((resolve, reject) => {
-    const req = httpsGet(downloadUri, { headers: politeHeaders() }, (res) => {
-      if (res.statusCode !== 200) {
-        reject(httpError(
-          `Scryfall bulk-data download returned ${res.statusCode}`,
-          res.statusCode ?? 0,
-          parseRetryAfterHeader(res.headers['retry-after']),
-        ));
-        res.resume();
-        return;
-      }
-
-      const total = res.headers['content-length'] ? Number(res.headers['content-length']) : null;
-      let downloaded = 0;
-      const chunks: Buffer[] = [];
-
-      res.on('data', (chunk: Buffer) => {
-        chunks.push(chunk);
-        downloaded += chunk.length;
-        onProgress?.(downloaded, total);
-      });
-      res.on('error', reject);
-      res.on('end', () => {
-        try {
-          const data = JSON.parse(Buffer.concat(chunks).toString('utf8')) as ScryfallBulkCard[];
-          if (!Array.isArray(data)) {
-            reject(new Error('Scryfall bulk-data payload was not an array'));
-            return;
-          }
-          resolve(data);
-        } catch (err) {
-          reject(err);
-        }
-      });
+    const worker = new Worker(join(__dirname, 'bulk-parse-worker.js'), {
+      workerData: { downloadUri },
     });
-    req.on('error', reject);
+
+    const allCards: ScryfallBulkCard[] = [];
+
+    worker.on('message', (msg: WorkerMsg) => {
+      switch (msg.type) {
+        case 'progress':
+          onProgress?.(msg.downloaded, msg.total);
+          break;
+        case 'cards':
+          for (const card of msg.cards) allCards.push(card);
+          break;
+        case 'done':
+          resolve(allCards);
+          worker.terminate();
+          break;
+        case 'error':
+          reject(httpError(msg.message, msg.status ?? 0));
+          worker.terminate();
+          break;
+      }
+    });
+
+    worker.on('error', reject);
+    worker.on('exit', (code) => {
+      if (code !== 0) reject(new Error(`Bulk-parse worker exited with code ${code}`));
+    });
   });
 }
+
+type WorkerMsg =
+  | { type: 'progress'; downloaded: number; total: number | null }
+  | { type: 'cards'; cards: ScryfallBulkCard[] }
+  | { type: 'done' }
+  | { type: 'error'; message: string; status?: number };
 
 function parseRetryAfterHeader(header: string | string[] | undefined): number | undefined {
   const raw = Array.isArray(header) ? header[0] : header;

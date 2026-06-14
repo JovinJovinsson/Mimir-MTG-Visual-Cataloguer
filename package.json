@@ -6,10 +6,11 @@
   "private": true,
   "scripts": {
     "build:main": "esbuild src/main/main.ts --bundle --outfile=dist/main/main.js --platform=node --format=cjs --target=node20 --external:electron --external:better-sqlite3",
+    "build:worker": "esbuild src/main/bulk-parse-worker.ts --bundle --outfile=dist/main/bulk-parse-worker.js --platform=node --format=cjs --target=node20",
     "build:preload": "esbuild src/main/preload.ts --bundle --outfile=dist/main/preload.js --platform=node --format=cjs --target=node20 --external:electron",
     "build:renderer": "esbuild src/renderer/renderer.ts --bundle --outfile=dist/renderer/renderer.js --platform=browser --format=iife --target=es2022",
     "build:assets": "node scripts/copy-assets.mjs",
-    "build": "npm run build:main && npm run build:preload && npm run build:renderer && npm run build:assets",
+    "build": "npm run build:main && npm run build:worker && npm run build:preload && npm run build:renderer && npm run build:assets",
     "rebuild:node": "npm rebuild better-sqlite3",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
     "dev": "npm run build && npm run rebuild:electron && electron .",
