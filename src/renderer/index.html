@@ -16,6 +16,10 @@
               <span class="label">Inbox</span>
               <span class="count" id="inbox-count">0</span>
             </li>
+            <li class="scanner-row" id="scanner-row">
+              <span class="label">Scan</span>
+              <span class="gate-state" id="scanner-gate">locked</span>
+            </li>
           </ul>
         </nav>
       </aside>
@@ -24,19 +28,31 @@
         <header class="main-header">
           <h1>Catalogue</h1>
           <form id="add-card-form" class="add-form" autocomplete="off">
-            <label for="scryfall-id-input">Add by Scryfall ID</label>
-            <input
-              type="text"
-              id="scryfall-id-input"
-              name="scryfall_id"
-              placeholder="e.g. 7c4b8d49-..."
-              required
-              spellcheck="false"
-            />
-            <button type="submit">Add</button>
+            <label for="card-name-input">Add by name</label>
+            <div class="autocomplete-wrap">
+              <input
+                type="text"
+                id="card-name-input"
+                name="card_name"
+                placeholder="e.g. Lightning Bolt"
+                spellcheck="false"
+                autocomplete="off"
+              />
+              <ul id="autocomplete-list" class="autocomplete-list" hidden></ul>
+            </div>
+            <button type="submit" disabled>Add</button>
           </form>
         </header>
         <div id="status" class="status" role="status" aria-live="polite"></div>
+
+        <div id="bootstrap-banner" class="bootstrap-banner" hidden>
+          <div class="bootstrap-banner-text">
+            <span id="bootstrap-banner-phase">Downloading Scryfall card data…</span>
+            <span id="bootstrap-banner-detail" class="muted"></span>
+          </div>
+          <div class="progress-bar"><div class="progress-bar-fill" id="bootstrap-banner-fill"></div></div>
+        </div>
+
         <section class="table-wrap">
           <table id="catalogue-table">
             <thead>
@@ -54,7 +70,7 @@
             </thead>
             <tbody id="catalogue-body">
               <tr class="empty-row">
-                <td colspan="9">No cards yet — add one by Scryfall ID above.</td>
+                <td colspan="9">No cards yet — add one by name above.</td>
               </tr>
             </tbody>
           </table>
@@ -64,6 +80,48 @@
       <aside id="review-panel" aria-label="Review panel (reserved)">
         <div class="reserved">Review panel<br /><small>reserved for slice 008</small></div>
       </aside>
+    </div>
+
+    <div id="wizard-overlay" class="wizard-overlay" hidden>
+      <div class="wizard-modal" role="dialog" aria-labelledby="wizard-title">
+        <header>
+          <h2 id="wizard-title">Welcome to Mimir</h2>
+        </header>
+        <p class="wizard-blurb">
+          Mimir needs Scryfall's card data to recognise and catalogue cards.
+          Pick how much you want to load now — you can change this later.
+        </p>
+
+        <div class="wizard-options">
+          <button class="wizard-option wizard-option--primary" id="wizard-full">
+            <span class="opt-title">Full library</span>
+            <span class="opt-sub">Every Magic printing (~450 MB, a few minutes)</span>
+          </button>
+          <button class="wizard-option wizard-option--disabled" disabled>
+            <span class="opt-title">Selected sets</span>
+            <span class="opt-sub">Pick the sets you care about <em>(coming in slice 017)</em></span>
+          </button>
+          <button class="wizard-option wizard-option--disabled" disabled>
+            <span class="opt-title">Standard only</span>
+            <span class="opt-sub">Just the current Standard rotation <em>(coming in slice 017)</em></span>
+          </button>
+        </div>
+
+        <div id="wizard-progress" class="wizard-progress" hidden>
+          <div class="wizard-progress-label">
+            <span id="wizard-phase-label">Connecting to Scryfall…</span>
+            <span id="wizard-progress-count" class="muted"></span>
+          </div>
+          <div class="progress-bar"><div class="progress-bar-fill" id="wizard-progress-fill"></div></div>
+          <button class="wizard-close" id="wizard-close" hidden>Continue to catalogue</button>
+        </div>
+
+        <div id="wizard-error" class="wizard-error" hidden>
+          <strong>Network error</strong>
+          <span id="wizard-error-message"></span>
+          <button class="wizard-retry" id="wizard-retry">Try again</button>
+        </div>
+      </div>
     </div>
 
     <script src="renderer.js"></script>

@@ -1,9 +1,17 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, webContents as electronWebContents } from 'electron';
 import { join } from 'node:path';
 import { openCatalogueDb, defaultCataloguePath, type CatalogueDb } from './database.js';
-import { registerIpcHandlers } from './ipc.js';
+import {
+  openScryfallIndexDb,
+  defaultScryfallIndexPath,
+  type ScryfallIndexDb,
+} from './scryfall-index.js';
+import { BootstrapOrchestrator } from './bootstrap.js';
+import { fetchBulkDataManifest, fetchBulkData, RateLimiter, retryOn429 } from './scryfall-bulk.js';
+import { broadcastBootstrapProgress, registerIpcHandlers } from './ipc.js';
 
-let db: CatalogueDb | null = null;
+let catalogue: CatalogueDb | null = null;
+let index: ScryfallIndexDb | null = null;
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -23,9 +31,26 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  const dbPath = defaultCataloguePath(app.getPath('userData'));
-  db = openCatalogueDb(dbPath);
-  registerIpcHandlers(db);
+  const userData = app.getPath('userData');
+  catalogue = openCatalogueDb(defaultCataloguePath(userData));
+  index = openScryfallIndexDb(defaultScryfallIndexPath(userData));
+
+  const limiter = new RateLimiter(150);
+
+  const bootstrap = new BootstrapOrchestrator({
+    index,
+    fetchManifest: async (bulkType) => {
+      await limiter.acquire();
+      return retryOn429(() => fetchBulkDataManifest(bulkType), { maxRetries: 3 });
+    },
+    fetchBulk: async (uri) => {
+      await limiter.acquire();
+      return retryOn429(() => fetchBulkData(uri), { maxRetries: 3 });
+    },
+  });
+
+  registerIpcHandlers({ catalogue, index, bootstrap });
+  broadcastBootstrapProgress(() => electronWebContents.getAllWebContents(), bootstrap);
 
   createWindow();
 
@@ -36,13 +61,17 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    db?.close();
-    db = null;
+    catalogue?.close();
+    index?.close();
+    catalogue = null;
+    index = null;
     app.quit();
   }
 });
 
 app.on('will-quit', () => {
-  db?.close();
-  db = null;
+  catalogue?.close();
+  index?.close();
+  catalogue = null;
+  index = null;
 });
