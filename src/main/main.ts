@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeImage, webContents as electronWebContents } from 'electron';
+import { app, BrowserWindow, nativeImage, session, webContents as electronWebContents } from 'electron';
 import { join } from 'node:path';
 import { openCatalogueDb, defaultCataloguePath, type CatalogueDb } from './database.js';
 import {
@@ -22,6 +22,8 @@ import {
   broadcastBootstrapProgress,
   registerIpcHandlers,
 } from './ipc.js';
+import { openScanDb } from './scan-db.js';
+import { openSettingsDb } from './settings-db.js';
 
 let catalogue: CatalogueDb | null = null;
 let index: ScryfallIndexDb | null = null;
@@ -48,6 +50,14 @@ app.whenReady().then(() => {
   catalogue = openCatalogueDb(defaultCataloguePath(userData));
   index = openScryfallIndexDb(defaultScryfallIndexPath(userData));
 
+  const scanDb = openScanDb(catalogue.raw);
+  const settingsDb = openSettingsDb(catalogue.raw);
+  const thumbnailsDir = join(userData, 'scans', 'thumbnails');
+
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(permission === 'media');
+  });
+
   const limiter = new RateLimiter(150);
 
   const bootstrap = new BootstrapOrchestrator({
@@ -71,7 +81,7 @@ app.whenReady().then(() => {
     rateLimit: () => limiter.acquire(),
   });
 
-  registerIpcHandlers({ catalogue, index, bootstrap, artCrops });
+  registerIpcHandlers({ catalogue, index, bootstrap, artCrops, scanDb, settingsDb, thumbnailsDir });
   broadcastBootstrapProgress(() => electronWebContents.getAllWebContents(), bootstrap);
   broadcastArtCropProgress(() => electronWebContents.getAllWebContents(), artCrops);
 

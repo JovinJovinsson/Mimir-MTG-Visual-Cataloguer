@@ -1,4 +1,4 @@
-import type { CardForRenderer, Condition, Foil } from './types.js';
+import type { CardForRenderer, Condition, Foil, ScanForRenderer } from './types.js';
 
 export const IPC_CHANNELS = {
   addCardById: 'catalogue:addCardById',
@@ -11,6 +11,10 @@ export const IPC_CHANNELS = {
   setsList: 'sets:list',
   setsToggleDownload: 'sets:toggleDownload',
   setsProgress: 'sets:progress',
+  scansCapture: 'scans:capture',
+  scansListRecent: 'scans:listRecent',
+  settingsGet: 'settings:get',
+  settingsSet: 'settings:set',
 } as const;
 
 export interface AddCardByIdRequest {
@@ -105,6 +109,35 @@ export interface SetProgressDto {
   status: SetDownloadStatus;
 }
 
+export interface CaptureRequest {
+  dataUrl: string;
+}
+
+export type CaptureResponse =
+  | { ok: true; scan: ScanForRenderer }
+  | { ok: false; error: string };
+
+export type ListRecentScansResponse =
+  | { ok: true; scans: ScanForRenderer[] }
+  | { ok: false; error: string };
+
+export interface GetSettingRequest {
+  key: string;
+}
+
+export type GetSettingResponse =
+  | { ok: true; value: string | null }
+  | { ok: false; error: string };
+
+export interface SetSettingRequest {
+  key: string;
+  value: string;
+}
+
+export type SetSettingResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
 export interface MimirApi {
   addCardById(req: AddCardByIdRequest): Promise<AddCardByIdResponse>;
   addCardByName(req: AddCardByNameRequest): Promise<AddCardByNameResponse>;
@@ -116,6 +149,10 @@ export interface MimirApi {
   setsList(): Promise<SetsListResponse>;
   setsToggleDownload(req: SetsToggleDownloadRequest): Promise<SetsToggleDownloadResponse>;
   onSetsProgress(cb: (event: SetProgressDto) => void): () => void;
+  scansCapture(req: CaptureRequest): Promise<CaptureResponse>;
+  scansListRecent(limit?: number): Promise<ListRecentScansResponse>;
+  settingsGet(req: GetSettingRequest): Promise<GetSettingResponse>;
+  settingsSet(req: SetSettingRequest): Promise<SetSettingResponse>;
 }
 
 declare global {

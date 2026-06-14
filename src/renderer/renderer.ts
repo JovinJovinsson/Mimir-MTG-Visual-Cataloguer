@@ -380,15 +380,27 @@ const pages = Array.from(document.querySelectorAll<HTMLElement>('main .page'));
 const setProgress = new Map<string, SetProgressDto>();
 let setsCache: SetWithStatusDto[] = [];
 
+let currentPage = 'catalogue';
+
 function setActivePage(page: string): void {
+  const leaving = currentPage;
+  currentPage = page;
+
   for (const item of navItems) {
     item.classList.toggle('active', item.dataset['page'] === page);
   }
   for (const section of pages) {
     section.hidden = section.dataset['page'] !== page;
   }
+
+  if (leaving === 'scan' && page !== 'scan') {
+    stopCamera();
+  }
+
   if (page === 'sets') {
     void refreshSets();
+  } else if (page === 'scan') {
+    void enterScanPage();
   }
 }
 
@@ -396,8 +408,7 @@ for (const item of navItems) {
   item.addEventListener('click', () => {
     const page = item.dataset['page'];
     if (!page) return;
-    // 'scan' is still locked / placeholder; clicking it should not navigate.
-    if (page === 'scan') return;
+    if (page === 'scan' && scannerRow.classList.contains('is-locked')) return;
     setActivePage(page);
   });
 }
@@ -566,3 +577,180 @@ void (async () => {
   await refresh();
   await refreshSets();
 })();
+
+// --- Scan page ---
+
+const scanVideo = document.getElementById('scan-video') as HTMLVideoElement;
+const cameraSelect = document.getElementById('camera-select') as HTMLSelectElement;
+const captureBtn = document.getElementById('capture-btn') as HTMLButtonElement;
+const scanErrorEl = document.getElementById('scan-error') as HTMLDivElement;
+const scanErrorMessage = document.getElementById('scan-error-message') as HTMLSpanElement;
+const scanRetryBtn = document.getElementById('scan-retry-btn') as HTMLButtonElement;
+const scanPermissionPrompt = document.getElementById('scan-permission-prompt') as HTMLDivElement;
+const scanRequestPermissionBtn = document.getElementById('scan-request-permission-btn') as HTMLButtonElement;
+const scanRecentsStrip = document.getElementById('scan-recents-strip') as HTMLDivElement;
+
+let activeStream: MediaStream | null = null;
+
+function stopCamera(): void {
+  if (activeStream) {
+    for (const track of activeStream.getTracks()) track.stop();
+    activeStream = null;
+  }
+  scanVideo.srcObject = null;
+  captureBtn.disabled = true;
+}
+
+function showScanError(msg: string): void {
+  scanErrorMessage.textContent = msg;
+  scanErrorEl.hidden = false;
+  captureBtn.disabled = true;
+}
+
+function hideScanError(): void {
+  scanErrorEl.hidden = true;
+}
+
+async function populateCameraList(): Promise<MediaDeviceInfo[]> {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cameras = devices.filter((d) => d.kind === 'videoinput');
+    cameraSelect.innerHTML = '';
+    if (cameras.length === 0) {
+      const opt = document.createElement('option');
+      opt.value = '';
+      opt.textContent = 'No cameras found';
+      cameraSelect.appendChild(opt);
+    } else {
+      cameras.forEach((cam, i) => {
+        const opt = document.createElement('option');
+        opt.value = cam.deviceId;
+        opt.textContent = cam.label || `Camera ${i + 1}`;
+        cameraSelect.appendChild(opt);
+      });
+    }
+    return cameras;
+  } catch {
+    return [];
+  }
+}
+
+async function startCamera(deviceId?: string): Promise<void> {
+  stopCamera();
+  hideScanError();
+  scanPermissionPrompt.hidden = true;
+
+  const constraints: MediaStreamConstraints = {
+    video: deviceId ? { deviceId: { exact: deviceId } } : true,
+  };
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    activeStream = stream;
+    scanVideo.srcObject = stream;
+
+    const track = stream.getVideoTracks()[0];
+    if (track) {
+      track.onended = () => {
+        showScanError('Camera disconnected — select another camera or reconnect.');
+        captureBtn.disabled = true;
+      };
+    }
+
+    captureBtn.disabled = false;
+
+    await populateCameraList();
+    const currentId = track?.getSettings().deviceId ?? '';
+    if (currentId) {
+      cameraSelect.value = currentId;
+      void window.mimir.settingsSet({ key: 'preferredCameraId', value: currentId });
+    }
+  } catch (err) {
+    const name = err instanceof Error ? err.name : '';
+    if (name === 'NotAllowedError') {
+      scanPermissionPrompt.hidden = false;
+      showScanError('Camera permission denied. Click "Allow Camera" above.');
+    } else if (name === 'NotFoundError') {
+      showScanError('No camera found. Connect a camera and try again.');
+    } else {
+      showScanError(err instanceof Error ? err.message : 'Camera error');
+    }
+  }
+}
+
+function renderRecentScans(scans: import('../shared/types.js').ScanForRenderer[]): void {
+  scanRecentsStrip.innerHTML = '';
+  if (scans.length === 0) {
+    const span = document.createElement('span');
+    span.className = 'scan-recents-empty';
+    span.textContent = 'No captures yet';
+    scanRecentsStrip.appendChild(span);
+    return;
+  }
+  for (const scan of scans) {
+    const wrap = document.createElement('div');
+    wrap.className = 'scan-recent-thumb';
+    if (scan.thumbnail_path) {
+      const img = document.createElement('img');
+      img.src = `file://${scan.thumbnail_path}`;
+      img.alt = `Scan ${scan.id}`;
+      wrap.appendChild(img);
+    }
+    const t = document.createElement('time');
+    t.textContent = new Date(scan.captured_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    wrap.appendChild(t);
+    scanRecentsStrip.appendChild(wrap);
+  }
+}
+
+async function loadRecentScans(): Promise<void> {
+  const res = await window.mimir.scansListRecent(8);
+  if (res.ok) renderRecentScans(res.scans);
+}
+
+async function enterScanPage(): Promise<void> {
+  await loadRecentScans();
+  const prefRes = await window.mimir.settingsGet({ key: 'preferredCameraId' });
+  const preferredId = prefRes.ok ? (prefRes.value ?? undefined) : undefined;
+  await startCamera(preferredId);
+}
+
+cameraSelect.addEventListener('change', () => {
+  const deviceId = cameraSelect.value;
+  if (deviceId) void startCamera(deviceId);
+});
+
+captureBtn.addEventListener('click', async () => {
+  if (!activeStream) return;
+  captureBtn.disabled = true;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = scanVideo.videoWidth || 640;
+  canvas.height = scanVideo.videoHeight || 480;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) { captureBtn.disabled = false; return; }
+  ctx.drawImage(scanVideo, 0, 0, canvas.width, canvas.height);
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+  try {
+    const res = await window.mimir.scansCapture({ dataUrl });
+    if (!res.ok) {
+      showScanError(`Capture failed: ${res.error}`);
+    } else {
+      await loadRecentScans();
+    }
+  } catch (err) {
+    showScanError(err instanceof Error ? err.message : 'Capture failed');
+  } finally {
+    captureBtn.disabled = false;
+  }
+});
+
+scanRetryBtn.addEventListener('click', () => {
+  const deviceId = cameraSelect.value || undefined;
+  void startCamera(deviceId);
+});
+
+scanRequestPermissionBtn.addEventListener('click', () => {
+  void startCamera(undefined);
+});

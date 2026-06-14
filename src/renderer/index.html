@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' file: data:; media-src 'self' blob:" />
     <title>Mimir</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -79,6 +79,37 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+        </section>
+
+        <section id="page-scan" class="page" data-page="scan" hidden>
+          <header class="main-header scan-header">
+            <h1>Scan</h1>
+            <div class="scan-controls">
+              <label class="scan-camera-label" for="camera-select">Camera</label>
+              <select id="camera-select" class="camera-select"></select>
+              <button id="capture-btn" class="capture-btn" disabled>Capture</button>
+            </div>
+          </header>
+
+          <div id="scan-error" class="scan-error" hidden>
+            <span id="scan-error-message">Camera unavailable</span>
+            <button id="scan-retry-btn" class="scan-retry-btn">Retry</button>
+          </div>
+
+          <div class="scan-viewport-wrap">
+            <video id="scan-video" class="scan-video" autoplay playsinline muted></video>
+            <div id="scan-permission-prompt" class="scan-permission-prompt" hidden>
+              <p>Camera access is needed to scan cards.</p>
+              <button id="scan-request-permission-btn" class="capture-btn">Allow Camera</button>
+            </div>
+          </div>
+
+          <div class="scan-recents">
+            <h2 class="scan-recents-label">Recent captures</h2>
+            <div id="scan-recents-strip" class="scan-recents-strip">
+              <span class="scan-recents-empty">No captures yet</span>
+            </div>
           </div>
         </section>
 

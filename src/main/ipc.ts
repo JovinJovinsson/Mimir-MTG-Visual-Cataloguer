@@ -1,4 +1,6 @@
 import { ipcMain, type WebContents } from 'electron';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   IPC_CHANNELS,
   type AddCardByIdRequest,
@@ -9,8 +11,15 @@ import {
   type BootstrapStartRequest,
   type BootstrapStartResponse,
   type BootstrapStatusDto,
+  type CaptureRequest,
+  type CaptureResponse,
+  type GetSettingRequest,
+  type GetSettingResponse,
   type ListCardsResponse,
+  type ListRecentScansResponse,
   type SetProgressDto,
+  type SetSettingRequest,
+  type SetSettingResponse,
   type SetWithStatusDto,
   type SetsListResponse,
   type SetsToggleDownloadRequest,
@@ -26,16 +35,22 @@ import type {
 import { estimateDiskUsageBytes } from './art-crop-planner.js';
 import { fetchScryfallCardById } from './scryfall.js';
 import type { CardForRenderer, Foil } from '../shared/types.js';
+import type { ScanDb } from './scan-db.js';
+import type { SettingsDb } from './settings-db.js';
+import { buildScanRow } from './scan-row-builder.js';
 
 export interface IpcDeps {
   catalogue: CatalogueDb;
   index: ScryfallIndexDb;
   bootstrap: BootstrapOrchestrator;
   artCrops: ArtCropOrchestrator;
+  scanDb: ScanDb;
+  settingsDb: SettingsDb;
+  thumbnailsDir: string;
 }
 
 export function registerIpcHandlers(deps: IpcDeps): void {
-  const { catalogue, index, bootstrap, artCrops } = deps;
+  const { catalogue, index, bootstrap, artCrops, scanDb, settingsDb, thumbnailsDir } = deps;
 
   ipcMain.handle(
     IPC_CHANNELS.addCardById,
@@ -153,6 +168,61 @@ export function registerIpcHandlers(deps: IpcDeps): void {
         } else {
           void artCrops.removeSetCrops(req.setCode);
         }
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.scansCapture,
+    async (_event, req: CaptureRequest): Promise<CaptureResponse> => {
+      try {
+        const base64 = req.dataUrl.replace(/^data:image\/jpeg;base64,/, '');
+        const buffer = Buffer.from(base64, 'base64');
+        await mkdir(thumbnailsDir, { recursive: true });
+        const capturedAt = Date.now();
+        const filename = `${capturedAt}.jpg`;
+        const thumbPath = join(thumbnailsDir, filename);
+        await writeFile(thumbPath, buffer);
+        const row = buildScanRow({ thumbnailPath: thumbPath, capturedAt });
+        const id = scanDb.insertScan(row);
+        return { ok: true, scan: { id, captured_at: capturedAt, thumbnail_path: thumbPath } };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.scansListRecent,
+    async (_event, req: { limit?: number }): Promise<ListRecentScansResponse> => {
+      try {
+        const limit = Math.max(1, Math.min(50, req?.limit ?? 8));
+        return { ok: true, scans: scanDb.listRecentScans(limit) };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.settingsGet,
+    async (_event, req: GetSettingRequest): Promise<GetSettingResponse> => {
+      try {
+        return { ok: true, value: settingsDb.get(req.key) };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.settingsSet,
+    async (_event, req: SetSettingRequest): Promise<SetSettingResponse> => {
+      try {
+        settingsDb.set(req.key, req.value);
         return { ok: true };
       } catch (err) {
         return { ok: false, error: errorMessage(err) };

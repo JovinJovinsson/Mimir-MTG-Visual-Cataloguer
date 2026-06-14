@@ -9,9 +9,16 @@ import {
   type BootstrapStartRequest,
   type BootstrapStartResponse,
   type BootstrapStatusDto,
+  type CaptureRequest,
+  type CaptureResponse,
+  type GetSettingRequest,
+  type GetSettingResponse,
   type ListCardsResponse,
+  type ListRecentScansResponse,
   type MimirApi,
   type SetProgressDto,
+  type SetSettingRequest,
+  type SetSettingResponse,
   type SetsListResponse,
   type SetsToggleDownloadRequest,
   type SetsToggleDownloadResponse,
@@ -48,6 +55,14 @@ const api: MimirApi = {
       ipcRenderer.removeListener(IPC_CHANNELS.setsProgress, listener);
     };
   },
+  scansCapture: (req: CaptureRequest): Promise<CaptureResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.scansCapture, req),
+  scansListRecent: (limit?: number): Promise<ListRecentScansResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.scansListRecent, { limit }),
+  settingsGet: (req: GetSettingRequest): Promise<GetSettingResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.settingsGet, req),
+  settingsSet: (req: SetSettingRequest): Promise<SetSettingResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.settingsSet, req),
 };
 
 contextBridge.exposeInMainWorld('mimir', api);

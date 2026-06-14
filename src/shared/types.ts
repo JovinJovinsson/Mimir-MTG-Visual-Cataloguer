@@ -55,3 +55,22 @@ export interface CardForRenderer {
   last_seen_at: number;
   needs_review: boolean;
 }
+
+export interface ScansRow {
+  id: number;
+  card_id: number | null;
+  captured_at: number;
+  thumbnail_path: string | null;
+  phash: string | null;
+  confidence_score: number | null;
+  inferences_json: string | null;
+  needed_manual_review: 0 | 1;
+}
+
+export type ScansInsert = Omit<ScansRow, 'id'>;
+
+export interface ScanForRenderer {
+  id: number;
+  captured_at: number;
+  thumbnail_path: string | null;
+}
