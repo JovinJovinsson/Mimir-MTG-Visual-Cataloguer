@@ -1,4 +1,8 @@
 import type { CardForRenderer } from '../shared/types.js';
+import { initState, step } from './card-detector.js';
+import type { DetectorState } from './card-detector.js';
+import { detectCard } from './frame-detector.js';
+import { warpCard } from './perspective-warp.js';
 import type {
   AutocompleteHitDto,
   BootstrapPhase,
@@ -591,8 +595,8 @@ void (async () => {
 // --- Scan page ---
 
 const scanVideo = document.getElementById('scan-video') as HTMLVideoElement;
+const scanOverlay = document.getElementById('scan-overlay') as HTMLCanvasElement;
 const cameraSelect = document.getElementById('camera-select') as HTMLSelectElement;
-const captureBtn = document.getElementById('capture-btn') as HTMLButtonElement;
 const scanErrorEl = document.getElementById('scan-error') as HTMLDivElement;
 const scanErrorMessage = document.getElementById('scan-error-message') as HTMLSpanElement;
 const scanRetryBtn = document.getElementById('scan-retry-btn') as HTMLButtonElement;
@@ -601,20 +605,128 @@ const scanRequestPermissionBtn = document.getElementById('scan-request-permissio
 const scanRecentsStrip = document.getElementById('scan-recents-strip') as HTMLDivElement;
 
 let activeStream: MediaStream | null = null;
+let detectorState: DetectorState = initState();
+let rafHandle: number | null = null;
+let lastFrameMs = 0;
+
+// Reusable off-screen canvas for frame sampling.
+const frameCanvas = document.createElement('canvas');
+const frameCtx = frameCanvas.getContext('2d')!;
 
 function stopCamera(): void {
+  if (rafHandle !== null) {
+    cancelAnimationFrame(rafHandle);
+    rafHandle = null;
+  }
+  detectorState = initState();
+  lastFrameMs = 0;
+
   if (activeStream) {
     for (const track of activeStream.getTracks()) track.stop();
     activeStream = null;
   }
   scanVideo.srcObject = null;
-  captureBtn.disabled = true;
+  clearOverlay();
+}
+
+function clearOverlay(): void {
+  const ctx = scanOverlay.getContext('2d');
+  if (ctx) ctx.clearRect(0, 0, scanOverlay.width, scanOverlay.height);
+}
+
+function drawOverlay(
+  quad: import('./card-detector.js').Quad | null,
+  phase: DetectorState['phase'],
+): void {
+  const W = scanVideo.videoWidth || scanOverlay.width;
+  const H = scanVideo.videoHeight || scanOverlay.height;
+  scanOverlay.width = W;
+  scanOverlay.height = H;
+
+  const ctx = scanOverlay.getContext('2d');
+  if (!ctx) return;
+  ctx.clearRect(0, 0, W, H);
+
+  if (!quad || phase === 'idle') return;
+
+  const [q0, q1, q2, q3] = quad;
+  ctx.beginPath();
+  ctx.moveTo(q0.x, q0.y);
+  ctx.lineTo(q1.x, q1.y);
+  ctx.lineTo(q2.x, q2.y);
+  ctx.lineTo(q3.x, q3.y);
+  ctx.closePath();
+
+  ctx.strokeStyle = phase === 'cooldown' ? '#00FF00' : '#FFD700';
+  ctx.lineWidth = Math.max(2, W * 0.004);
+  ctx.shadowColor = ctx.strokeStyle;
+  ctx.shadowBlur = 8;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+async function fireCapture(
+  pixels: Uint8ClampedArray,
+  W: number,
+  H: number,
+  quad: import('./card-detector.js').Quad,
+): Promise<void> {
+  const warped = warpCard(pixels, W, H, quad);
+  const wW = 400, wH = 559;
+
+  const warpCanvas = document.createElement('canvas');
+  warpCanvas.width = wW;
+  warpCanvas.height = wH;
+  const wCtx = warpCanvas.getContext('2d');
+  if (!wCtx) return;
+
+  const imageData = wCtx.createImageData(wW, wH);
+  imageData.data.set(warped);
+  wCtx.putImageData(imageData, 0, 0);
+  const dataUrl = warpCanvas.toDataURL('image/jpeg', 0.85);
+
+  try {
+    const res = await window.mimir.scansCapture({ dataUrl });
+    if (res.ok) {
+      await loadRecentScans();
+    }
+  } catch {
+    // Capture errors are silent — detection continues
+  }
+}
+
+function runDetectionLoop(nowMs: number): void {
+  rafHandle = requestAnimationFrame(runDetectionLoop);
+
+  if (!activeStream || scanVideo.readyState < 2) return;
+
+  const W = scanVideo.videoWidth;
+  const H = scanVideo.videoHeight;
+  if (W === 0 || H === 0) return;
+
+  frameCanvas.width = W;
+  frameCanvas.height = H;
+  frameCtx.drawImage(scanVideo, 0, 0, W, H);
+  const pixels = frameCtx.getImageData(0, 0, W, H).data as Uint8ClampedArray;
+
+  const quad = detectCard(pixels, W, H);
+
+  const deltaMs = lastFrameMs === 0 ? 16 : nowMs - lastFrameMs;
+  lastFrameMs = nowMs;
+
+  const { state, events } = step(detectorState, { quad, deltaMs });
+  detectorState = state;
+
+  drawOverlay(quad, state.phase);
+
+  for (const ev of events) {
+    void fireCapture(pixels, W, H, ev.quad);
+  }
 }
 
 function showScanError(msg: string): void {
   scanErrorMessage.textContent = msg;
   scanErrorEl.hidden = false;
-  captureBtn.disabled = true;
 }
 
 function hideScanError(): void {
@@ -663,11 +775,9 @@ async function startCamera(deviceId?: string): Promise<void> {
     if (track) {
       track.onended = () => {
         showScanError('Camera disconnected — select another camera or reconnect.');
-        captureBtn.disabled = true;
+        stopCamera();
       };
     }
-
-    captureBtn.disabled = false;
 
     await populateCameraList();
     const currentId = track?.getSettings().deviceId ?? '';
@@ -675,6 +785,8 @@ async function startCamera(deviceId?: string): Promise<void> {
       cameraSelect.value = currentId;
       void window.mimir.settingsSet({ key: 'preferredCameraId', value: currentId });
     }
+
+    rafHandle = requestAnimationFrame(runDetectionLoop);
   } catch (err) {
     const name = err instanceof Error ? err.name : '';
     if (name === 'NotAllowedError') {
@@ -728,32 +840,6 @@ async function enterScanPage(): Promise<void> {
 cameraSelect.addEventListener('change', () => {
   const deviceId = cameraSelect.value;
   if (deviceId) void startCamera(deviceId);
-});
-
-captureBtn.addEventListener('click', async () => {
-  if (!activeStream) return;
-  captureBtn.disabled = true;
-
-  const canvas = document.createElement('canvas');
-  canvas.width = scanVideo.videoWidth || 640;
-  canvas.height = scanVideo.videoHeight || 480;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) { captureBtn.disabled = false; return; }
-  ctx.drawImage(scanVideo, 0, 0, canvas.width, canvas.height);
-  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-
-  try {
-    const res = await window.mimir.scansCapture({ dataUrl });
-    if (!res.ok) {
-      showScanError(`Capture failed: ${res.error}`);
-    } else {
-      await loadRecentScans();
-    }
-  } catch (err) {
-    showScanError(err instanceof Error ? err.message : 'Capture failed');
-  } finally {
-    captureBtn.disabled = false;
-  }
 });
 
 scanRetryBtn.addEventListener('click', () => {

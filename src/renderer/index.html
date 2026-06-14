@@ -88,7 +88,6 @@
             <div class="scan-controls">
               <label class="scan-camera-label" for="camera-select">Camera</label>
               <select id="camera-select" class="camera-select"></select>
-              <button id="capture-btn" class="capture-btn" disabled>Capture</button>
             </div>
           </header>
 
@@ -99,6 +98,7 @@
 
           <div class="scan-viewport-wrap">
             <video id="scan-video" class="scan-video" autoplay playsinline muted></video>
+            <canvas id="scan-overlay" class="scan-overlay"></canvas>
             <div id="scan-permission-prompt" class="scan-permission-prompt" hidden>
               <p>Camera access is needed to scan cards.</p>
               <button id="scan-request-permission-btn" class="capture-btn">Allow Camera</button>
