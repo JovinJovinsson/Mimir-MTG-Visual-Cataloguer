@@ -130,12 +130,10 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   ipcMain.handle(
     IPC_CHANNELS.bootstrapStart,
     async (_event, req: BootstrapStartRequest): Promise<BootstrapStartResponse> => {
-      try {
-        void bootstrap.start(req.selection);
-        return { ok: true };
-      } catch (err) {
-        return { ok: false, error: errorMessage(err) };
-      }
+      // Fire-and-forget but attach a catch so rejections don't become unhandled.
+      // Errors during the run are surfaced via progress events (phase === 'error').
+      bootstrap.start(req.selection).catch(() => {/* handled via progress events */});
+      return { ok: true };
     },
   );
 

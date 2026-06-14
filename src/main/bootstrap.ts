@@ -64,9 +64,7 @@ export class BootstrapOrchestrator extends EventEmitter {
   }
 
   async start(selection: UserSelection): Promise<void> {
-    if (this.running) {
-      throw new Error('Bootstrap already in progress');
-    }
+    if (this.running) return;
     this.running = true;
     this.error = null;
     this.ingestedCards = 0;

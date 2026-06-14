@@ -154,29 +154,24 @@ describe('BootstrapOrchestrator', () => {
     expect(manifestCalls).toBe(0);
   });
 
-  it('refuses concurrent starts', async () => {
+  it('is idempotent when called while already running', async () => {
     let release: () => void = () => {};
-    const blocker = new Promise<void>((resolve) => {
-      release = resolve;
-    });
+    const blocker = new Promise<void>((resolve) => { release = resolve; });
     const orch = new BootstrapOrchestrator({
       index,
       fetchManifest: async () => {
         await blocker;
-        return {
-          type: 'default_cards',
-          download_uri: 'x',
-          updated_at: '',
-          size: 0,
-        };
+        return { type: 'default_cards', download_uri: 'x', updated_at: '', size: 0 };
       },
       fetchBulk: fakeBulkFetcher(sample),
       now: () => 1,
     });
 
     const first = orch.start('full');
-    await expect(orch.start('full')).rejects.toThrow(/in progress/i);
+    // Second call while in-flight should resolve immediately without throwing.
+    await expect(orch.start('full')).resolves.toBeUndefined();
     release();
     await first;
+    expect(orch.status().phase).toBe('done');
   });
 });
