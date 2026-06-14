@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'" />
+    <title>Mimir</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar" aria-label="Navigation">
+        <div class="sidebar-brand">Mimir</div>
+        <nav>
+          <ul>
+            <li class="active">
+              <span class="label">Inbox</span>
+              <span class="count" id="inbox-count">0</span>
+            </li>
+          </ul>
+        </nav>
+      </aside>
+
+      <main id="main">
+        <header class="main-header">
+          <h1>Catalogue</h1>
+          <form id="add-card-form" class="add-form" autocomplete="off">
+            <label for="scryfall-id-input">Add by Scryfall ID</label>
+            <input
+              type="text"
+              id="scryfall-id-input"
+              name="scryfall_id"
+              placeholder="e.g. 7c4b8d49-..."
+              required
+              spellcheck="false"
+            />
+            <button type="submit">Add</button>
+          </form>
+        </header>
+        <div id="status" class="status" role="status" aria-live="polite"></div>
+        <section class="table-wrap">
+          <table id="catalogue-table">
+            <thead>
+              <tr>
+                <th class="col-thumb">Thumb</th>
+                <th class="col-name">Name</th>
+                <th class="col-set">Set</th>
+                <th class="col-cn">#</th>
+                <th class="col-qty">Qty</th>
+                <th class="col-foil">Foil</th>
+                <th class="col-cond">Cond</th>
+                <th class="col-price">Price (USD)</th>
+                <th class="col-seen">Last seen</th>
+              </tr>
+            </thead>
+            <tbody id="catalogue-body">
+              <tr class="empty-row">
+                <td colspan="9">No cards yet — add one by Scryfall ID above.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      </main>
+
+      <aside id="review-panel" aria-label="Review panel (reserved)">
+        <div class="reserved">Review panel<br /><small>reserved for slice 008</small></div>
+      </aside>
+    </div>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

@@ -1,0 +1,32 @@
+{
+  "name": "mimir",
+  "version": "0.1.0",
+  "description": "Local-first MTG card scanner and catalogue",
+  "main": "dist/main/main.js",
+  "private": true,
+  "scripts": {
+    "build:main": "esbuild src/main/main.ts --bundle --outfile=dist/main/main.js --platform=node --format=cjs --target=node20 --external:electron --external:better-sqlite3",
+    "build:preload": "esbuild src/main/preload.ts --bundle --outfile=dist/main/preload.js --platform=node --format=cjs --target=node20 --external:electron",
+    "build:renderer": "esbuild src/renderer/renderer.ts --bundle --outfile=dist/renderer/renderer.js --platform=browser --format=iife --target=es2022",
+    "build:assets": "node scripts/copy-assets.mjs",
+    "build": "npm run build:main && npm run build:preload && npm run build:renderer && npm run build:assets",
+    "rebuild:node": "npm rebuild better-sqlite3",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
+    "dev": "npm run build && npm run rebuild:electron && electron .",
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "pretest": "npm run rebuild:node",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.10.0",
+    "electron": "^33.2.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0"
+  }
+}
