@@ -8,12 +8,15 @@ import type {
   AddCardInput,
   CardForRenderer,
   CardsRow,
+  CatalogueAction,
 } from '../shared/types.js';
 
 export interface CatalogueDb {
   raw: Database.Database;
   inboxCollectionId(): number;
   addCard(input: Omit<AddCardInput, 'collection_id' | 'now'> & { collection_id?: number; now?: number }): { id: number; created: boolean };
+  executeAction(action: CatalogueAction): number;
+  findCardByScryfallId(scryfallId: string, foil: string, condition: string, language: string, collectionId: number): CardsRow | null;
   listCards(): CardForRenderer[];
   close(): void;
 }
@@ -107,6 +110,19 @@ function wrap(db: Database.Database): CatalogueDb {
         return { id: Number(info.lastInsertRowid), created: true };
       });
       return tx();
+    },
+
+    executeAction(action: CatalogueAction): number {
+      if (action.kind === 'bump') {
+        bumpCard.run(action.newQuantity, action.lastSeenAt, action.cardId);
+        return action.cardId;
+      }
+      const info = insertCard.run(action.row);
+      return Number(info.lastInsertRowid);
+    },
+
+    findCardByScryfallId(scryfallId: string, foil: string, condition: string, language: string, collectionId: number): CardsRow | null {
+      return findExisting.get({ scryfall_id: scryfallId, foil, condition, language, collection_id: collectionId }) ?? null;
     },
 
     listCards(): CardForRenderer[] {

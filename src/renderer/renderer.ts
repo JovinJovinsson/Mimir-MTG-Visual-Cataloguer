@@ -7,12 +7,32 @@ import type {
   AutocompleteHitDto,
   BootstrapPhase,
   BootstrapStatusDto,
+  ReviewCountDto,
+  ReviewItemDto,
   ScanQueueDepthDto,
   SetDownloadStatus,
   SetProgressDto,
   SetWithStatusDto,
 } from '../shared/ipc.js';
 
+// --- Review page elements ---
+const reviewCountEl = document.getElementById('review-count') as HTMLSpanElement;
+const reviewPendingLabel = document.getElementById('review-pending-label') as HTMLSpanElement;
+const reviewEmpty = document.getElementById('review-empty') as HTMLDivElement;
+const reviewPanelContent = document.getElementById('review-panel-content') as HTMLDivElement;
+const reviewSnapshot = document.getElementById('review-snapshot') as HTMLImageElement;
+const reviewReasonBadge = document.getElementById('review-reason-badge') as HTMLDivElement;
+const reviewItemMeta = document.getElementById('review-item-meta') as HTMLDivElement;
+const reviewToggleGallery = document.getElementById('review-toggle-gallery') as HTMLButtonElement;
+const reviewToggleList = document.getElementById('review-toggle-list') as HTMLButtonElement;
+const reviewGallery = document.getElementById('review-gallery') as HTMLDivElement;
+const reviewList = document.getElementById('review-list') as HTMLDivElement;
+const reviewListBody = document.getElementById('review-list-body') as HTMLTableSectionElement;
+const reviewBtnConfirm = document.getElementById('review-btn-confirm') as HTMLButtonElement;
+const reviewBtnSkip = document.getElementById('review-btn-skip') as HTMLButtonElement;
+const reviewBtnDismiss = document.getElementById('review-btn-dismiss') as HTMLButtonElement;
+
+// --- Add-card form ---
 const form = document.getElementById('add-card-form') as HTMLFormElement;
 const input = document.getElementById('card-name-input') as HTMLInputElement;
 const submitButton = form.querySelector('button[type="submit"]') as HTMLButtonElement;
@@ -416,6 +436,8 @@ function setActivePage(page: string): void {
     void refreshSets();
   } else if (page === 'scan') {
     void enterScanPage();
+  } else if (page === 'review') {
+    void refreshReviewPage();
   }
 }
 
@@ -591,6 +613,8 @@ void (async () => {
   }
   await refresh();
   await refreshSets();
+  const countRes = await window.mimir.reviewCount();
+  if (countRes.ok) applyReviewCount(countRes.count);
 })();
 
 // --- Scan page ---
@@ -875,3 +899,268 @@ function applyScanQueueDepth(event: ScanQueueDepthDto): void {
 }
 
 window.mimir.onScanQueueDepth(applyScanQueueDepth);
+
+// --- Review page ---
+
+let currentReviewItem: ReviewItemDto | null = null;
+let selectedCandidateIndex = -1;
+let reviewViewMode: 'gallery' | 'list' = 'gallery';
+
+function applyReviewCount(count: number): void {
+  reviewCountEl.textContent = String(count);
+  if (count > 0) {
+    reviewCountEl.classList.add('has-items');
+  } else {
+    reviewCountEl.classList.remove('has-items');
+  }
+}
+
+function reasonLabel(reason: string): string {
+  switch (reason) {
+    case 'ambiguous_identity': return 'Ambiguous match';
+    case 'unknown_card': return 'Unknown card';
+    case 'manual_flagged': return 'Flagged for review';
+    default: return reason;
+  }
+}
+
+function selectCandidate(index: number): void {
+  if (!currentReviewItem) return;
+  if (index < 0 || index >= currentReviewItem.candidates.length) return;
+  selectedCandidateIndex = index;
+  reviewBtnConfirm.disabled = false;
+
+  // Gallery: highlight
+  const cards = reviewGallery.querySelectorAll<HTMLDivElement>('.review-candidate');
+  cards.forEach((c, i) => c.classList.toggle('is-selected', i === index));
+
+  // List: highlight
+  const rows = reviewListBody.querySelectorAll<HTMLTableRowElement>('tr');
+  rows.forEach((r, i) => r.classList.toggle('is-selected', i === index));
+}
+
+function renderReviewGallery(item: ReviewItemDto): void {
+  reviewGallery.innerHTML = '';
+  item.candidates.forEach((candidate, i) => {
+    const div = document.createElement('div');
+    div.className = 'review-candidate';
+    if (i === selectedCandidateIndex) div.classList.add('is-selected');
+
+    const keyBadge = document.createElement('div');
+    keyBadge.className = 'review-candidate-key';
+    keyBadge.textContent = String(i + 1);
+    div.appendChild(keyBadge);
+
+    if (candidate.artCropPath) {
+      const img = document.createElement('img');
+      img.className = 'review-candidate-art';
+      img.src = `file://${candidate.artCropPath}`;
+      img.alt = candidate.name;
+      div.appendChild(img);
+    } else {
+      const placeholder = document.createElement('div');
+      placeholder.className = 'review-candidate-art-placeholder';
+      placeholder.textContent = 'No art';
+      div.appendChild(placeholder);
+    }
+
+    const body = document.createElement('div');
+    body.className = 'review-candidate-body';
+
+    const name = document.createElement('div');
+    name.className = 'review-candidate-name';
+    name.textContent = candidate.name;
+    body.appendChild(name);
+
+    const meta = document.createElement('div');
+    meta.className = 'review-candidate-meta';
+    meta.textContent = `${candidate.setCode.toUpperCase()} #${candidate.collectorNumber}`;
+    body.appendChild(meta);
+
+    div.appendChild(body);
+    div.addEventListener('click', () => selectCandidate(i));
+    reviewGallery.appendChild(div);
+  });
+}
+
+function renderReviewList(item: ReviewItemDto): void {
+  reviewListBody.innerHTML = '';
+  item.candidates.forEach((candidate, i) => {
+    const tr = document.createElement('tr');
+    if (i === selectedCandidateIndex) tr.classList.add('is-selected');
+
+    const tdKey = document.createElement('td');
+    tdKey.className = 'rl-key';
+    tdKey.textContent = String(i + 1);
+    tr.appendChild(tdKey);
+
+    const tdName = document.createElement('td');
+    tdName.textContent = candidate.name;
+    tr.appendChild(tdName);
+
+    const tdSet = document.createElement('td');
+    tdSet.className = 'rl-set';
+    tdSet.textContent = candidate.setCode.toUpperCase();
+    tr.appendChild(tdSet);
+
+    const tdCn = document.createElement('td');
+    tdCn.className = 'rl-cn';
+    tdCn.textContent = candidate.collectorNumber;
+    tr.appendChild(tdCn);
+
+    const tdDist = document.createElement('td');
+    tdDist.className = 'rl-dist';
+    tdDist.textContent = String(candidate.hammingDistance);
+    tr.appendChild(tdDist);
+
+    const tdPrice = document.createElement('td');
+    tdPrice.className = 'rl-price';
+    tdPrice.textContent = formatPrice(candidate.priceUsd);
+    tr.appendChild(tdPrice);
+
+    tr.addEventListener('click', () => selectCandidate(i));
+    reviewListBody.appendChild(tr);
+  });
+}
+
+function applyReviewViewMode(): void {
+  const isGallery = reviewViewMode === 'gallery';
+  reviewGallery.hidden = !isGallery;
+  reviewList.hidden = isGallery;
+  reviewToggleGallery.classList.toggle('is-active', isGallery);
+  reviewToggleList.classList.toggle('is-active', !isGallery);
+}
+
+function renderReviewItem(item: ReviewItemDto): void {
+  currentReviewItem = item;
+  selectedCandidateIndex = -1;
+  reviewBtnConfirm.disabled = true;
+
+  // Snapshot
+  if (item.thumbnailPath) {
+    reviewSnapshot.src = `file://${item.thumbnailPath}`;
+    reviewSnapshot.hidden = false;
+  } else {
+    reviewSnapshot.src = '';
+    reviewSnapshot.hidden = true;
+  }
+
+  // Reason badge
+  reviewReasonBadge.textContent = reasonLabel(item.reason);
+  reviewReasonBadge.className = `review-reason-badge reason-${item.reason}`;
+
+  // Meta
+  reviewItemMeta.textContent = `Captured ${new Date(item.capturedAt).toLocaleString()} · ${item.candidates.length} candidate(s)`;
+
+  renderReviewGallery(item);
+  renderReviewList(item);
+  applyReviewViewMode();
+
+  reviewEmpty.hidden = true;
+  reviewPanelContent.hidden = false;
+}
+
+function showReviewEmpty(): void {
+  currentReviewItem = null;
+  selectedCandidateIndex = -1;
+  reviewBtnConfirm.disabled = true;
+  reviewEmpty.hidden = false;
+  reviewPanelContent.hidden = true;
+}
+
+async function refreshReviewPage(): Promise<void> {
+  const countRes = await window.mimir.reviewCount();
+  if (countRes.ok) {
+    applyReviewCount(countRes.count);
+    reviewPendingLabel.textContent = countRes.count > 0
+      ? `${countRes.count} pending`
+      : 'No items pending';
+  }
+
+  const res = await window.mimir.reviewListPending();
+  if (!res.ok) {
+    showReviewEmpty();
+    return;
+  }
+  const item = res.items[0];
+  if (!item) {
+    showReviewEmpty();
+    return;
+  }
+  renderReviewItem(item);
+}
+
+reviewToggleGallery.addEventListener('click', () => {
+  reviewViewMode = 'gallery';
+  applyReviewViewMode();
+  if (currentReviewItem) renderReviewGallery(currentReviewItem);
+});
+
+reviewToggleList.addEventListener('click', () => {
+  reviewViewMode = 'list';
+  applyReviewViewMode();
+  if (currentReviewItem) renderReviewList(currentReviewItem);
+});
+
+reviewBtnConfirm.addEventListener('click', async () => {
+  if (!currentReviewItem || selectedCandidateIndex < 0) return;
+  const candidate = currentReviewItem.candidates[selectedCandidateIndex];
+  if (!candidate) return;
+  reviewBtnConfirm.disabled = true;
+  const res = await window.mimir.reviewConfirm({ reviewId: currentReviewItem.id, scryfallId: candidate.scryfallId });
+  if (res.ok) {
+    await refreshReviewPage();
+    await refresh();
+  } else {
+    reviewBtnConfirm.disabled = false;
+  }
+});
+
+reviewBtnSkip.addEventListener('click', async () => {
+  if (!currentReviewItem) return;
+  await window.mimir.reviewSkip({ reviewId: currentReviewItem.id });
+  await refreshReviewPage();
+});
+
+reviewBtnDismiss.addEventListener('click', async () => {
+  if (!currentReviewItem) return;
+  await window.mimir.reviewDismiss({ reviewId: currentReviewItem.id });
+  await refreshReviewPage();
+});
+
+// Keyboard shortcuts on review page
+document.addEventListener('keydown', (e) => {
+  if (currentPage !== 'review') return;
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+  const digit = parseInt(e.key, 10);
+  if (!isNaN(digit) && digit >= 1 && digit <= 9) {
+    e.preventDefault();
+    selectCandidate(digit - 1);
+    return;
+  }
+
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (!reviewBtnConfirm.disabled) reviewBtnConfirm.click();
+    return;
+  }
+
+  if (e.key === 's' || e.key === 'S') {
+    e.preventDefault();
+    reviewBtnSkip.click();
+    return;
+  }
+
+  if (e.key === 'd' || e.key === 'D') {
+    e.preventDefault();
+    reviewBtnDismiss.click();
+  }
+});
+
+window.mimir.onReviewPendingUpdate((event: ReviewCountDto) => {
+  applyReviewCount(event.count);
+  if (currentPage === 'review') {
+    void refreshReviewPage();
+  }
+});

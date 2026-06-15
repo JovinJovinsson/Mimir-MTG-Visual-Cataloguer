@@ -1,4 +1,6 @@
-import type { CardForRenderer, Condition, Foil, ScanForRenderer } from './types.js';
+import type { CardForRenderer, Condition, Foil, ScanForRenderer, ReviewItemDto } from './types.js';
+
+export type { ReviewItemDto };
 
 export const IPC_CHANNELS = {
   addCardById: 'catalogue:addCardById',
@@ -16,6 +18,12 @@ export const IPC_CHANNELS = {
   scanQueueDepth: 'scan:queueDepth',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
+  reviewListPending: 'review:listPending',
+  reviewCount: 'review:count',
+  reviewConfirm: 'review:confirm',
+  reviewSkip: 'review:skip',
+  reviewDismiss: 'review:dismiss',
+  reviewPendingUpdate: 'review:pendingUpdate',
 } as const;
 
 export interface AddCardByIdRequest {
@@ -145,6 +153,43 @@ export type SetSettingResponse =
   | { ok: true }
   | { ok: false; error: string };
 
+export type ReviewListPendingResponse =
+  | { ok: true; items: ReviewItemDto[] }
+  | { ok: false; error: string };
+
+export interface ReviewCountDto {
+  count: number;
+}
+
+export type ReviewCountResponse =
+  | { ok: true; count: number }
+  | { ok: false; error: string };
+
+export interface ReviewConfirmRequest {
+  reviewId: number;
+  scryfallId: string;
+}
+
+export type ReviewConfirmResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export interface ReviewSkipRequest {
+  reviewId: number;
+}
+
+export type ReviewSkipResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export interface ReviewDismissRequest {
+  reviewId: number;
+}
+
+export type ReviewDismissResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
 export interface MimirApi {
   addCardById(req: AddCardByIdRequest): Promise<AddCardByIdResponse>;
   addCardByName(req: AddCardByNameRequest): Promise<AddCardByNameResponse>;
@@ -161,6 +206,12 @@ export interface MimirApi {
   onScanQueueDepth(cb: (event: ScanQueueDepthDto) => void): () => void;
   settingsGet(req: GetSettingRequest): Promise<GetSettingResponse>;
   settingsSet(req: SetSettingRequest): Promise<SetSettingResponse>;
+  reviewListPending(): Promise<ReviewListPendingResponse>;
+  reviewCount(): Promise<ReviewCountResponse>;
+  reviewConfirm(req: ReviewConfirmRequest): Promise<ReviewConfirmResponse>;
+  reviewSkip(req: ReviewSkipRequest): Promise<ReviewSkipResponse>;
+  reviewDismiss(req: ReviewDismissRequest): Promise<ReviewDismissResponse>;
+  onReviewPendingUpdate(cb: (event: ReviewCountDto) => void): () => void;
 }
 
 declare global {

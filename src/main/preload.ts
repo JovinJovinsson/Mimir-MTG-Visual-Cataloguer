@@ -16,6 +16,15 @@ import {
   type ListCardsResponse,
   type ListRecentScansResponse,
   type MimirApi,
+  type ReviewConfirmRequest,
+  type ReviewConfirmResponse,
+  type ReviewCountDto,
+  type ReviewCountResponse,
+  type ReviewDismissRequest,
+  type ReviewDismissResponse,
+  type ReviewListPendingResponse,
+  type ReviewSkipRequest,
+  type ReviewSkipResponse,
   type ScanQueueDepthDto,
   type SetProgressDto,
   type SetSettingRequest,
@@ -71,6 +80,23 @@ const api: MimirApi = {
     ipcRenderer.invoke(IPC_CHANNELS.settingsGet, req),
   settingsSet: (req: SetSettingRequest): Promise<SetSettingResponse> =>
     ipcRenderer.invoke(IPC_CHANNELS.settingsSet, req),
+  reviewListPending: (): Promise<ReviewListPendingResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.reviewListPending),
+  reviewCount: (): Promise<ReviewCountResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.reviewCount),
+  reviewConfirm: (req: ReviewConfirmRequest): Promise<ReviewConfirmResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.reviewConfirm, req),
+  reviewSkip: (req: ReviewSkipRequest): Promise<ReviewSkipResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.reviewSkip, req),
+  reviewDismiss: (req: ReviewDismissRequest): Promise<ReviewDismissResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.reviewDismiss, req),
+  onReviewPendingUpdate: (cb: (event: ReviewCountDto) => void) => {
+    const listener = (_event: unknown, e: ReviewCountDto): void => cb(e);
+    ipcRenderer.on(IPC_CHANNELS.reviewPendingUpdate, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.reviewPendingUpdate, listener);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('mimir', api);

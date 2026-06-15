@@ -17,6 +17,15 @@ import {
   type GetSettingResponse,
   type ListCardsResponse,
   type ListRecentScansResponse,
+  type ReviewConfirmRequest,
+  type ReviewConfirmResponse,
+  type ReviewCountDto,
+  type ReviewCountResponse,
+  type ReviewDismissRequest,
+  type ReviewDismissResponse,
+  type ReviewListPendingResponse,
+  type ReviewSkipRequest,
+  type ReviewSkipResponse,
   type ScanQueueDepthDto,
   type SetProgressDto,
   type SetSettingRequest,
@@ -40,6 +49,8 @@ import type { ScanDb } from './scan-db.js';
 import type { SettingsDb } from './settings-db.js';
 import { buildScanRow } from './scan-row-builder.js';
 import type { ProcessingQueue, ScanQueueDepthEvent } from './processing-queue.js';
+import type { ReviewQueueDb } from './review-queue-db.js';
+import { resolveReviewItem } from './review-resolver.js';
 
 export interface IpcDeps {
   catalogue: CatalogueDb;
@@ -50,10 +61,12 @@ export interface IpcDeps {
   settingsDb: SettingsDb;
   thumbnailsDir: string;
   processingQueue: ProcessingQueue;
+  reviewQueueDb: ReviewQueueDb;
+  broadcastReviewCount: () => void;
 }
 
 export function registerIpcHandlers(deps: IpcDeps): void {
-  const { catalogue, index, bootstrap, artCrops, scanDb, settingsDb, thumbnailsDir, processingQueue } = deps;
+  const { catalogue, index, bootstrap, artCrops, scanDb, settingsDb, thumbnailsDir, processingQueue, reviewQueueDb, broadcastReviewCount } = deps;
 
   ipcMain.handle(
     IPC_CHANNELS.addCardById,
@@ -231,6 +244,99 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       }
     },
   );
+
+  ipcMain.handle(IPC_CHANNELS.reviewListPending, async (): Promise<ReviewListPendingResponse> => {
+    try {
+      return { ok: true, items: reviewQueueDb.listPendingItems(1) };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err) };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.reviewCount, async (): Promise<ReviewCountResponse> => {
+    try {
+      return { ok: true, count: reviewQueueDb.getPendingCount() };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err) };
+    }
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.reviewConfirm,
+    async (_event, req: ReviewConfirmRequest): Promise<ReviewConfirmResponse> => {
+      try {
+        const item = reviewQueueDb.getItemById(req.reviewId);
+        if (!item) return { ok: false, error: `Review item ${req.reviewId} not found` };
+
+        const inboxId = catalogue.inboxCollectionId();
+        const existing = catalogue.findCardByScryfallId(req.scryfallId, 'normal', 'NM', 'EN', inboxId);
+        const actions = resolveReviewItem(item, { kind: 'confirm', scryfallId: req.scryfallId }, existing, inboxId, Date.now());
+
+        let resolvedCardId: number | null = null;
+        for (const action of actions) {
+          switch (action.kind) {
+            case 'insert':
+            case 'bump':
+              resolvedCardId = catalogue.executeAction(action);
+              break;
+            case 'update-scan-card': {
+              const cardId = action.cardId ?? resolvedCardId;
+              if (cardId != null && action.scanId != null) {
+                scanDb.updateScanCard(action.scanId, cardId);
+              }
+              break;
+            }
+            case 'resolve-review-queue':
+              reviewQueueDb.resolveItem(action.reviewId, action.scryfallId);
+              break;
+          }
+        }
+        broadcastReviewCount();
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.reviewSkip,
+    async (_event, req: ReviewSkipRequest): Promise<ReviewSkipResponse> => {
+      try {
+        reviewQueueDb.skipItem(req.reviewId);
+        broadcastReviewCount();
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.reviewDismiss,
+    async (_event, req: ReviewDismissRequest): Promise<ReviewDismissResponse> => {
+      try {
+        const item = reviewQueueDb.getItemById(req.reviewId);
+        if (!item) return { ok: false, error: `Review item ${req.reviewId} not found` };
+
+        const actions = resolveReviewItem(item, { kind: 'dismiss' }, null, catalogue.inboxCollectionId(), Date.now());
+        for (const action of actions) {
+          switch (action.kind) {
+            case 'delete-scan':
+              scanDb.deleteScan(action.scanId);
+              break;
+            case 'dismiss-review-queue':
+              reviewQueueDb.dismissItem(action.reviewId);
+              break;
+          }
+        }
+        broadcastReviewCount();
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
 }
 
 export function broadcastBootstrapProgress(
@@ -272,6 +378,21 @@ export function broadcastScanQueueDepth(
       }
     }
   });
+}
+
+export function makeBroadcastReviewCount(
+  webContentsList: () => WebContents[],
+  reviewQueueDb: ReviewQueueDb,
+): () => void {
+  return function broadcastReviewCount(): void {
+    const count = reviewQueueDb.getPendingCount();
+    const dto: ReviewCountDto = { count };
+    for (const wc of webContentsList()) {
+      if (!wc.isDestroyed()) {
+        wc.send(IPC_CHANNELS.reviewPendingUpdate, dto);
+      }
+    }
+  };
 }
 
 function pickFoil(available: Foil[], requested?: Foil): Foil {

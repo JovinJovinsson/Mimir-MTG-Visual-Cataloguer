@@ -21,11 +21,13 @@ import {
   broadcastArtCropProgress,
   broadcastBootstrapProgress,
   broadcastScanQueueDepth,
+  makeBroadcastReviewCount,
   registerIpcHandlers,
 } from './ipc.js';
 import { openScanDb } from './scan-db.js';
 import { openSettingsDb } from './settings-db.js';
 import { ProcessingQueue } from './processing-queue.js';
+import { openReviewQueueDb } from './review-queue-db.js';
 
 let catalogue: CatalogueDb | null = null;
 let index: ScryfallIndexDb | null = null;
@@ -54,6 +56,7 @@ app.whenReady().then(() => {
 
   const scanDb = openScanDb(catalogue.raw);
   const settingsDb = openSettingsDb(catalogue.raw);
+  const reviewQueueDb = openReviewQueueDb(catalogue.raw);
   const thumbnailsDir = join(userData, 'scans', 'thumbnails');
 
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
@@ -83,14 +86,21 @@ app.whenReady().then(() => {
     rateLimit: () => limiter.acquire(),
   });
 
+  const broadcastReviewCount = makeBroadcastReviewCount(
+    () => electronWebContents.getAllWebContents(),
+    reviewQueueDb,
+  );
+
   const processingQueue = new ProcessingQueue({
     decodeImage: decodeJpegWithNativeImage,
     index,
     scanDb,
     catalogueDb: catalogue,
+    reviewQueueDb,
+    onReviewCountChanged: broadcastReviewCount,
   });
 
-  registerIpcHandlers({ catalogue, index, bootstrap, artCrops, scanDb, settingsDb, thumbnailsDir, processingQueue });
+  registerIpcHandlers({ catalogue, index, bootstrap, artCrops, scanDb, settingsDb, thumbnailsDir, processingQueue, reviewQueueDb, broadcastReviewCount });
   broadcastBootstrapProgress(() => electronWebContents.getAllWebContents(), bootstrap);
   broadcastArtCropProgress(() => electronWebContents.getAllWebContents(), artCrops);
   broadcastScanQueueDepth(() => electronWebContents.getAllWebContents(), processingQueue);

@@ -18,6 +18,8 @@ export interface ScanRecognitionUpdate {
 export interface ScanDb {
   insertScan(row: ScansInsert): number;
   updateScanRecognition(scanId: number, update: ScanRecognitionUpdate): void;
+  updateScanCard(scanId: number, cardId: number): void;
+  deleteScan(scanId: number): void;
   listRecentScans(limit: number): ScanForRenderer[];
 }
 
@@ -38,6 +40,14 @@ export function openScanDb(db: Database): ScanDb {
         needed_manual_review = @needed_manual_review
     WHERE id = @id
   `);
+
+  const updateCardStmt = db.prepare(
+    `UPDATE scans SET card_id = ? WHERE id = ?`,
+  );
+
+  const deleteStmt = db.prepare(
+    `DELETE FROM scans WHERE id = ?`,
+  );
 
   const listStmt = db.prepare<[number], ScanRow>(`
     SELECT id, captured_at, thumbnail_path
@@ -61,6 +71,14 @@ export function openScanDb(db: Database): ScanDb {
         inferences_json: update.inferencesJson,
         needed_manual_review: update.neededManualReview,
       });
+    },
+
+    updateScanCard(scanId: number, cardId: number): void {
+      updateCardStmt.run(cardId, scanId);
+    },
+
+    deleteScan(scanId: number): void {
+      deleteStmt.run(scanId);
     },
 
     listRecentScans(limit: number): ScanForRenderer[] {

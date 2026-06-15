@@ -1,6 +1,8 @@
 import { computePHash, hammingDistance } from './phash.js';
+import type { ReviewCandidate } from '../shared/types.js';
 
 export const MATCH_THRESHOLD = 10;
+export const SILENT_ACCEPT_THRESHOLD = 5;
 
 export interface HashedCard {
   scryfall_id: string;
@@ -10,6 +12,40 @@ export interface HashedCard {
   collector_number: string;
   price_usd: number | null;
   phash: string;
+}
+
+export interface HashedCardWithCrop extends HashedCard {
+  art_crop_path: string | null;
+}
+
+export function getTopNCandidates(
+  phash: string,
+  cards: HashedCardWithCrop[],
+  n: number,
+): ReviewCandidate[] {
+  const scored: Array<{ card: HashedCardWithCrop; dist: number }> = [];
+
+  for (const card of cards) {
+    try {
+      const dist = hammingDistance(phash, card.phash);
+      scored.push({ card, dist });
+    } catch {
+      // skip cards with malformed phash
+    }
+  }
+
+  scored.sort((a, b) => a.dist - b.dist);
+
+  return scored.slice(0, n).map(({ card, dist }) => ({
+    scryfallId: card.scryfall_id,
+    name: card.name,
+    setCode: card.set_code,
+    setName: card.set_name,
+    collectorNumber: card.collector_number,
+    priceUsd: card.price_usd,
+    hammingDistance: dist,
+    artCropPath: card.art_crop_path,
+  }));
 }
 
 export interface RecognitionIndex {

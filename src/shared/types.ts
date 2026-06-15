@@ -74,3 +74,26 @@ export interface ScanForRenderer {
   captured_at: number;
   thumbnail_path: string | null;
 }
+
+export type ReviewReason = 'ambiguous_identity' | 'unknown_card' | 'manual_flagged';
+
+export interface ReviewCandidate {
+  scryfallId: string;
+  name: string;
+  setCode: string;
+  setName: string;
+  collectorNumber: string;
+  priceUsd: number | null;
+  hammingDistance: number;
+  artCropPath: string | null;
+}
+
+export interface ReviewItemDto {
+  id: number;
+  scanId: number | null;
+  reason: ReviewReason;
+  candidates: ReviewCandidate[];
+  thumbnailPath: string | null;
+  capturedAt: number;
+  createdAt: number;
+}
