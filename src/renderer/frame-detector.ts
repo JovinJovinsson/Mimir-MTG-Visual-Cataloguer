@@ -215,28 +215,26 @@ export function detectCard(
 
   const blurred = blur5(gray, sw, sh);
   const edges = sobel(blurred, sw, sh);
-  // Threshold 35: strong enough to skip most background noise, low enough
-  // to catch card borders under varied lighting.
-  const binary = threshold(edges, sw * sh, 35);
-  const dilated = dilate3(binary, sw, sh);
+  // Threshold 60: card's black border produces Sobel ~120-255.
+  // Sleeve/arm/background edges (~30-80) are suppressed, preventing them from
+  // bridging into the card's edge component via BFS.
+  const binary = threshold(edges, sw * sh, 60);
+  // No dilation: we rely on the high threshold to keep components separate.
+  // Dilation bridges nearby edges and merges card + background into one blob.
 
   const frameArea = sw * sh;
-  // Card must occupy 3–80% of the (half-res) frame area.
-  // A card at arm's length covers ~12% at 640×480; at 50 cm ~4%.
   const MIN_AREA = frameArea * 0.03;
   const MAX_AREA = frameArea * 0.80;
-  // At half-res, a card's border perimeter is ~150–350 px depending on distance;
-  // ~50% of those are edge pixels → expect 75–175 px per component.
-  // Use 80 as the floor so very-far cards still pass.
-  const MIN_COMPONENT = 80;
+  // Without dilation, edge coverage is sparser; lower floor to 60.
+  const MIN_COMPONENT = 60;
 
   const visited = new Uint8Array(sw * sh);
   let bestQuad: Quad | null = null;
   let bestArea = 0;
 
   for (let i = 0; i < sw * sh; i++) {
-    if (dilated[i]! === 255 && !visited[i]!) {
-      const comp = bfs(dilated, sw, sh, i, visited);
+    if (binary[i]! === 255 && !visited[i]!) {
+      const comp = bfs(binary, sw, sh, i, visited);
       if (comp.length < MIN_COMPONENT) continue;
 
       const hull = convexHull(comp);
