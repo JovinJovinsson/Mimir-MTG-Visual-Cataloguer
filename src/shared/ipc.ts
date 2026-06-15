@@ -19,10 +19,14 @@ export const IPC_CHANNELS = {
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
   reviewListPending: 'review:listPending',
+  reviewListAll: 'review:listAll',
   reviewCount: 'review:count',
   reviewConfirm: 'review:confirm',
   reviewSkip: 'review:skip',
   reviewDismiss: 'review:dismiss',
+  reviewBulkDismiss: 'review:bulkDismiss',
+  reviewBulkConfirmFoil: 'review:bulkConfirmFoil',
+  reviewBulkConfirmSet: 'review:bulkConfirmSet',
   reviewPendingUpdate: 'review:pendingUpdate',
 } as const;
 
@@ -190,6 +194,35 @@ export type ReviewDismissResponse =
   | { ok: true }
   | { ok: false; error: string };
 
+export type ReviewListAllResponse =
+  | { ok: true; items: ReviewItemDto[] }
+  | { ok: false; error: string };
+
+export interface ReviewBulkDismissRequest {
+  reviewIds: number[];
+}
+
+export type ReviewBulkDismissResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export interface ReviewBulkConfirmFoilRequest {
+  reviewIds: number[];
+}
+
+export type ReviewBulkConfirmFoilResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export interface ReviewBulkConfirmSetRequest {
+  reviewIds: number[];
+  setCode: string;
+}
+
+export type ReviewBulkConfirmSetResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
 export interface MimirApi {
   addCardById(req: AddCardByIdRequest): Promise<AddCardByIdResponse>;
   addCardByName(req: AddCardByNameRequest): Promise<AddCardByNameResponse>;
@@ -207,10 +240,14 @@ export interface MimirApi {
   settingsGet(req: GetSettingRequest): Promise<GetSettingResponse>;
   settingsSet(req: SetSettingRequest): Promise<SetSettingResponse>;
   reviewListPending(): Promise<ReviewListPendingResponse>;
+  reviewListAll(): Promise<ReviewListAllResponse>;
   reviewCount(): Promise<ReviewCountResponse>;
   reviewConfirm(req: ReviewConfirmRequest): Promise<ReviewConfirmResponse>;
   reviewSkip(req: ReviewSkipRequest): Promise<ReviewSkipResponse>;
   reviewDismiss(req: ReviewDismissRequest): Promise<ReviewDismissResponse>;
+  reviewBulkDismiss(req: ReviewBulkDismissRequest): Promise<ReviewBulkDismissResponse>;
+  reviewBulkConfirmFoil(req: ReviewBulkConfirmFoilRequest): Promise<ReviewBulkConfirmFoilResponse>;
+  reviewBulkConfirmSet(req: ReviewBulkConfirmSetRequest): Promise<ReviewBulkConfirmSetResponse>;
   onReviewPendingUpdate(cb: (event: ReviewCountDto) => void): () => void;
 }
 

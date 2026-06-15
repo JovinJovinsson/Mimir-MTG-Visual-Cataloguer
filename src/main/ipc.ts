@@ -17,12 +17,19 @@ import {
   type GetSettingResponse,
   type ListCardsResponse,
   type ListRecentScansResponse,
+  type ReviewBulkConfirmFoilRequest,
+  type ReviewBulkConfirmFoilResponse,
+  type ReviewBulkConfirmSetRequest,
+  type ReviewBulkConfirmSetResponse,
+  type ReviewBulkDismissRequest,
+  type ReviewBulkDismissResponse,
   type ReviewConfirmRequest,
   type ReviewConfirmResponse,
   type ReviewCountDto,
   type ReviewCountResponse,
   type ReviewDismissRequest,
   type ReviewDismissResponse,
+  type ReviewListAllResponse,
   type ReviewListPendingResponse,
   type ReviewSkipRequest,
   type ReviewSkipResponse,
@@ -51,6 +58,7 @@ import { buildScanRow } from './scan-row-builder.js';
 import type { ProcessingQueue, ScanQueueDepthEvent } from './processing-queue.js';
 import type { ReviewQueueDb } from './review-queue-db.js';
 import { resolveReviewItem } from './review-resolver.js';
+import { planBulkReviewAction } from './bulk-review-planner.js';
 
 export interface IpcDeps {
   catalogue: CatalogueDb;
@@ -253,6 +261,14 @@ export function registerIpcHandlers(deps: IpcDeps): void {
     }
   });
 
+  ipcMain.handle(IPC_CHANNELS.reviewListAll, async (): Promise<ReviewListAllResponse> => {
+    try {
+      return { ok: true, items: reviewQueueDb.listAllPendingItems() };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err) };
+    }
+  });
+
   ipcMain.handle(IPC_CHANNELS.reviewCount, async (): Promise<ReviewCountResponse> => {
     try {
       return { ok: true, count: reviewQueueDb.getPendingCount() };
@@ -327,6 +343,115 @@ export function registerIpcHandlers(deps: IpcDeps): void {
               break;
             case 'dismiss-review-queue':
               reviewQueueDb.dismissItem(action.reviewId);
+              break;
+          }
+        }
+        broadcastReviewCount();
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.reviewBulkDismiss,
+    async (_event, req: ReviewBulkDismissRequest): Promise<ReviewBulkDismissResponse> => {
+      try {
+        const now = Date.now();
+        const inboxId = catalogue.inboxCollectionId();
+        const inputs = req.reviewIds.flatMap((id) => {
+          const item = reviewQueueDb.getItemById(id);
+          return item ? [{ item, existingCard: null as null }] : [];
+        });
+        const actions = planBulkReviewAction(inputs, { kind: 'dismiss-all' }, inboxId, now);
+        for (const action of actions) {
+          switch (action.kind) {
+            case 'delete-scan': scanDb.deleteScan(action.scanId); break;
+            case 'dismiss-review-queue': reviewQueueDb.dismissItem(action.reviewId); break;
+          }
+        }
+        broadcastReviewCount();
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.reviewBulkConfirmFoil,
+    async (_event, req: ReviewBulkConfirmFoilRequest): Promise<ReviewBulkConfirmFoilResponse> => {
+      try {
+        const now = Date.now();
+        const inboxId = catalogue.inboxCollectionId();
+        const inputs = req.reviewIds.flatMap((id) => {
+          const item = reviewQueueDb.getItemById(id);
+          if (!item) return [];
+          const topCandidate = item.candidates[0];
+          const existingCard = topCandidate
+            ? catalogue.findCardByScryfallId(topCandidate.scryfallId, 'foil', 'NM', 'EN', inboxId)
+            : null;
+          return [{ item, existingCard }];
+        });
+        const actions = planBulkReviewAction(inputs, { kind: 'confirm-all-foil' }, inboxId, now);
+        let resolvedCardId: number | null = null;
+        for (const action of actions) {
+          switch (action.kind) {
+            case 'insert':
+            case 'bump':
+              resolvedCardId = catalogue.executeAction(action);
+              break;
+            case 'update-scan-card': {
+              const cardId = action.cardId ?? resolvedCardId;
+              if (cardId != null && action.scanId != null) scanDb.updateScanCard(action.scanId, cardId);
+              break;
+            }
+            case 'resolve-review-queue':
+              reviewQueueDb.resolveItem(action.reviewId, action.scryfallId);
+              resolvedCardId = null;
+              break;
+          }
+        }
+        broadcastReviewCount();
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.reviewBulkConfirmSet,
+    async (_event, req: ReviewBulkConfirmSetRequest): Promise<ReviewBulkConfirmSetResponse> => {
+      try {
+        const now = Date.now();
+        const inboxId = catalogue.inboxCollectionId();
+        const inputs = req.reviewIds.flatMap((id) => {
+          const item = reviewQueueDb.getItemById(id);
+          if (!item) return [];
+          const candidate = item.candidates.find((c) => c.setCode === req.setCode);
+          const existingCard = candidate
+            ? catalogue.findCardByScryfallId(candidate.scryfallId, 'normal', 'NM', 'EN', inboxId)
+            : null;
+          return [{ item, existingCard }];
+        });
+        const actions = planBulkReviewAction(inputs, { kind: 'mark-all-as-set', setCode: req.setCode }, inboxId, now);
+        let resolvedCardId: number | null = null;
+        for (const action of actions) {
+          switch (action.kind) {
+            case 'insert':
+            case 'bump':
+              resolvedCardId = catalogue.executeAction(action);
+              break;
+            case 'update-scan-card': {
+              const cardId = action.cardId ?? resolvedCardId;
+              if (cardId != null && action.scanId != null) scanDb.updateScanCard(action.scanId, cardId);
+              break;
+            }
+            case 'resolve-review-queue':
+              reviewQueueDb.resolveItem(action.reviewId, action.scryfallId);
+              resolvedCardId = null;
               break;
           }
         }

@@ -16,12 +16,19 @@ import {
   type ListCardsResponse,
   type ListRecentScansResponse,
   type MimirApi,
+  type ReviewBulkConfirmFoilRequest,
+  type ReviewBulkConfirmFoilResponse,
+  type ReviewBulkConfirmSetRequest,
+  type ReviewBulkConfirmSetResponse,
+  type ReviewBulkDismissRequest,
+  type ReviewBulkDismissResponse,
   type ReviewConfirmRequest,
   type ReviewConfirmResponse,
   type ReviewCountDto,
   type ReviewCountResponse,
   type ReviewDismissRequest,
   type ReviewDismissResponse,
+  type ReviewListAllResponse,
   type ReviewListPendingResponse,
   type ReviewSkipRequest,
   type ReviewSkipResponse,
@@ -82,6 +89,8 @@ const api: MimirApi = {
     ipcRenderer.invoke(IPC_CHANNELS.settingsSet, req),
   reviewListPending: (): Promise<ReviewListPendingResponse> =>
     ipcRenderer.invoke(IPC_CHANNELS.reviewListPending),
+  reviewListAll: (): Promise<ReviewListAllResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.reviewListAll),
   reviewCount: (): Promise<ReviewCountResponse> =>
     ipcRenderer.invoke(IPC_CHANNELS.reviewCount),
   reviewConfirm: (req: ReviewConfirmRequest): Promise<ReviewConfirmResponse> =>
@@ -90,6 +99,12 @@ const api: MimirApi = {
     ipcRenderer.invoke(IPC_CHANNELS.reviewSkip, req),
   reviewDismiss: (req: ReviewDismissRequest): Promise<ReviewDismissResponse> =>
     ipcRenderer.invoke(IPC_CHANNELS.reviewDismiss, req),
+  reviewBulkDismiss: (req: ReviewBulkDismissRequest): Promise<ReviewBulkDismissResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.reviewBulkDismiss, req),
+  reviewBulkConfirmFoil: (req: ReviewBulkConfirmFoilRequest): Promise<ReviewBulkConfirmFoilResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.reviewBulkConfirmFoil, req),
+  reviewBulkConfirmSet: (req: ReviewBulkConfirmSetRequest): Promise<ReviewBulkConfirmSetResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.reviewBulkConfirmSet, req),
   onReviewPendingUpdate: (cb: (event: ReviewCountDto) => void) => {
     const listener = (_event: unknown, e: ReviewCountDto): void => cb(e);
     ipcRenderer.on(IPC_CHANNELS.reviewPendingUpdate, listener);

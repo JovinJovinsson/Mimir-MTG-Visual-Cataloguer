@@ -139,11 +139,46 @@
             </div>
           </header>
 
+          <!-- Bulk action bar (shown when 2+ items are checked) -->
+          <div id="review-bulk-bar" class="review-bulk-bar" hidden>
+            <span id="review-bulk-count" class="review-bulk-count">0 selected</span>
+            <div class="review-bulk-actions">
+              <button id="review-bulk-foil" class="review-btn review-btn--secondary">Confirm all as foil</button>
+              <button id="review-bulk-set" class="review-btn review-btn--secondary" disabled>Mark all as set —</button>
+              <button id="review-bulk-dismiss-all" class="review-btn review-btn--danger">Dismiss all</button>
+            </div>
+          </div>
+
+          <!-- Back to queue (shown when in single-item detail view) -->
+          <div id="review-back-wrap" class="review-back-wrap" hidden>
+            <button id="review-back-btn" class="review-back-btn">← Back to queue</button>
+          </div>
+
+          <!-- Empty state -->
           <div id="review-empty" class="review-empty" hidden>
             <div class="review-empty-icon">✓</div>
             <p>All caught up — no items to review.</p>
           </div>
 
+          <!-- Review queue: list with checkboxes (shown in list view mode) -->
+          <div id="review-queue-wrap" class="review-queue-wrap" hidden>
+            <table class="review-queue-table">
+              <thead>
+                <tr>
+                  <th class="rq-check"><input type="checkbox" id="review-select-all" title="Select all" /></th>
+                  <th class="rq-thumb">Thumb</th>
+                  <th class="rq-reason">Reason</th>
+                  <th class="rq-match">Best match</th>
+                  <th class="rq-count">Candidates</th>
+                  <th class="rq-time">Captured</th>
+                  <th class="rq-action"></th>
+                </tr>
+              </thead>
+              <tbody id="review-queue-body"></tbody>
+            </table>
+          </div>
+
+          <!-- Single-item detail panel (shown in detail view mode) -->
           <div id="review-panel-content" hidden>
             <!-- Top: snapshot + identification -->
             <div class="review-top">

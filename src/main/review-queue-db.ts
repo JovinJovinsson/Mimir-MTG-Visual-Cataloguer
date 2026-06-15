@@ -28,10 +28,12 @@ export interface ReviewQueueDb {
   insertReviewItem(item: ReviewQueueInsert): number;
   getPendingCount(): number;
   listPendingItems(limit: number): ReviewItemDto[];
+  listAllPendingItems(): ReviewItemDto[];
   getItemById(id: number): ReviewItemDto | null;
   resolveItem(id: number, scryfallId: string): void;
   dismissItem(id: number): void;
   skipItem(id: number): void;
+  bulkDismiss(ids: number[]): void;
 }
 
 export function openReviewQueueDb(db: Database): ReviewQueueDb {
@@ -74,6 +76,15 @@ export function openReviewQueueDb(db: Database): ReviewQueueDb {
 
   const skipStmt = db.prepare(`
     UPDATE review_queue SET status = 'skipped', resolved_at = @now WHERE id = @id
+  `);
+
+  const listAllPendingStmt = db.prepare<[], ReviewQueueItemRow>(`
+    SELECT rq.id, rq.scan_id, rq.reason, rq.candidates_json, rq.created_at,
+           s.thumbnail_path, COALESCE(s.captured_at, rq.created_at) AS captured_at
+    FROM review_queue rq
+    LEFT JOIN scans s ON s.id = rq.scan_id
+    WHERE rq.status = 'pending'
+    ORDER BY rq.created_at ASC
   `);
 
   function rowToDto(row: ReviewQueueItemRow): ReviewItemDto {
@@ -122,6 +133,20 @@ export function openReviewQueueDb(db: Database): ReviewQueueDb {
 
     skipItem(id: number): void {
       skipStmt.run({ id, now: Date.now() });
+    },
+
+    listAllPendingItems(): ReviewItemDto[] {
+      return listAllPendingStmt.all().map(rowToDto);
+    },
+
+    bulkDismiss(ids: number[]): void {
+      const now = Date.now();
+      const tx = db.transaction(() => {
+        for (const id of ids) {
+          dismissStmt.run({ id, now });
+        }
+      });
+      tx();
     },
   };
 }

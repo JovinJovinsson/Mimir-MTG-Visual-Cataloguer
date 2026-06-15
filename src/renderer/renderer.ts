@@ -36,6 +36,7 @@ interface ReviewPanelDom {
   btnSkip: HTMLButtonElement;
   btnDismiss: HTMLButtonElement;
   pendingLabel?: HTMLElement;
+  onItemActioned?: () => Promise<void>;
 }
 
 class ReviewPanelController {
@@ -53,6 +54,10 @@ class ReviewPanelController {
   get btnConfirm(): HTMLButtonElement { return this.dom.btnConfirm; }
   get btnSkip(): HTMLButtonElement { return this.dom.btnSkip; }
   get btnDismiss(): HTMLButtonElement { return this.dom.btnDismiss; }
+
+  showItem(item: ReviewItemDto): void {
+    this.renderItem(item);
+  }
 
   selectCandidate(index: number): void {
     if (!this._currentItem) return;
@@ -232,8 +237,12 @@ class ReviewPanelController {
       scryfallId: candidate.scryfallId,
     });
     if (res.ok) {
-      await this.loadAndRender();
-      await refresh();
+      if (this.dom.onItemActioned) {
+        await this.dom.onItemActioned();
+      } else {
+        await this.loadAndRender();
+        await refresh();
+      }
     } else {
       this.dom.btnConfirm.disabled = false;
     }
@@ -242,13 +251,21 @@ class ReviewPanelController {
   private async handleSkip(): Promise<void> {
     if (!this._currentItem) return;
     await window.mimir.reviewSkip({ reviewId: this._currentItem.id });
-    await this.loadAndRender();
+    if (this.dom.onItemActioned) {
+      await this.dom.onItemActioned();
+    } else {
+      await this.loadAndRender();
+    }
   }
 
   private async handleDismiss(): Promise<void> {
     if (!this._currentItem) return;
     await window.mimir.reviewDismiss({ reviewId: this._currentItem.id });
-    await this.loadAndRender();
+    if (this.dom.onItemActioned) {
+      await this.dom.onItemActioned();
+    } else {
+      await this.loadAndRender();
+    }
   }
 }
 
@@ -287,6 +304,25 @@ const wizardOptions = wizardFullBtn.parentElement as HTMLDivElement;
 const reviewCountEl = document.getElementById('review-count') as HTMLSpanElement;
 const scanReviewCountEl = document.getElementById('scan-review-count') as HTMLSpanElement;
 
+// ── Review page: queue list elements ─────────────────────────────────────────
+
+const reviewBulkBar = document.getElementById('review-bulk-bar') as HTMLDivElement;
+const reviewBulkCount = document.getElementById('review-bulk-count') as HTMLSpanElement;
+const reviewBulkFoilBtn = document.getElementById('review-bulk-foil') as HTMLButtonElement;
+const reviewBulkSetBtn = document.getElementById('review-bulk-set') as HTMLButtonElement;
+const reviewBulkDismissAllBtn = document.getElementById('review-bulk-dismiss-all') as HTMLButtonElement;
+const reviewBackWrap = document.getElementById('review-back-wrap') as HTMLDivElement;
+const reviewBackBtn = document.getElementById('review-back-btn') as HTMLButtonElement;
+const reviewQueueWrap = document.getElementById('review-queue-wrap') as HTMLDivElement;
+const reviewQueueBody = document.getElementById('review-queue-body') as HTMLTableSectionElement;
+const reviewSelectAll = document.getElementById('review-select-all') as HTMLInputElement;
+
+let reviewItems: ReviewItemDto[] = [];
+let reviewSelectedIds = new Set<number>();
+let reviewLastClickedIdx = -1;
+type ReviewPageMode = 'list' | 'detail';
+let reviewPageMode: ReviewPageMode = 'list';
+
 // ── Review page panel instance ────────────────────────────────────────────────
 
 const reviewPagePanel = new ReviewPanelController({
@@ -304,6 +340,10 @@ const reviewPagePanel = new ReviewPanelController({
   btnSkip: document.getElementById('review-btn-skip') as HTMLButtonElement,
   btnDismiss: document.getElementById('review-btn-dismiss') as HTMLButtonElement,
   pendingLabel: document.getElementById('review-pending-label') as HTMLSpanElement,
+  onItemActioned: async () => {
+    await loadReviewQueue();
+    await refresh();
+  },
 });
 
 // ── Slide-out panel instance (scan page) ─────────────────────────────────────
@@ -334,6 +374,230 @@ function openSlideOut(): void {
   scanReviewToggleBtn.classList.add('is-open');
   void slideOutPanel.loadAndRender();
 }
+
+// ── Review page: queue list + multi-select ────────────────────────────────────
+
+function showReviewListMode(): void {
+  reviewPageMode = 'list';
+  reviewBackWrap.hidden = true;
+  reviewQueueWrap.hidden = reviewItems.length === 0;
+  document.getElementById('review-empty')!.hidden = reviewItems.length > 0;
+  document.getElementById('review-panel-content')!.hidden = true;
+}
+
+function showReviewDetailMode(item: ReviewItemDto): void {
+  reviewPageMode = 'detail';
+  reviewBackWrap.hidden = false;
+  reviewQueueWrap.hidden = true;
+  document.getElementById('review-empty')!.hidden = true;
+  reviewPagePanel.showItem(item);
+}
+
+function updateBulkBar(): void {
+  const count = reviewSelectedIds.size;
+  reviewBulkBar.hidden = count < 2;
+  if (count < 2) return;
+
+  reviewBulkCount.textContent = `${count} selected`;
+
+  const selectedItems = reviewItems.filter((i) => reviewSelectedIds.has(i.id));
+  const topSetCodes = selectedItems.map((i) => i.candidates[0]?.setCode).filter(Boolean) as string[];
+  const allSameSet =
+    topSetCodes.length === selectedItems.length &&
+    topSetCodes.length > 0 &&
+    topSetCodes.every((s) => s === topSetCodes[0]);
+
+  if (allSameSet && topSetCodes[0]) {
+    reviewBulkSetBtn.disabled = false;
+    reviewBulkSetBtn.textContent = `Mark all as ${topSetCodes[0].toUpperCase()}`;
+    reviewBulkSetBtn.dataset['setCode'] = topSetCodes[0];
+  } else {
+    reviewBulkSetBtn.disabled = true;
+    reviewBulkSetBtn.textContent = 'Mark all as set —';
+    delete reviewBulkSetBtn.dataset['setCode'];
+  }
+}
+
+function renderQueueRow(item: ReviewItemDto, idx: number): HTMLTableRowElement {
+  const tr = document.createElement('tr');
+  tr.dataset['reviewId'] = String(item.id);
+  tr.dataset['idx'] = String(idx);
+
+  const tdCheck = document.createElement('td');
+  tdCheck.className = 'rq-check';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = reviewSelectedIds.has(item.id);
+  cb.addEventListener('click', (e) => {
+    e.stopPropagation();
+    handleCheckboxClick(item.id, idx, e.shiftKey);
+  });
+  tdCheck.appendChild(cb);
+  tr.appendChild(tdCheck);
+
+  const tdThumb = document.createElement('td');
+  tdThumb.className = 'rq-thumb';
+  if (item.thumbnailPath) {
+    const img = document.createElement('img');
+    img.src = `file://${item.thumbnailPath}`;
+    img.alt = '';
+    img.className = 'rq-thumb-img';
+    tdThumb.appendChild(img);
+  }
+  tr.appendChild(tdThumb);
+
+  const tdReason = document.createElement('td');
+  tdReason.className = 'rq-reason';
+  const badge = document.createElement('span');
+  badge.className = `review-reason-badge reason-${item.reason}`;
+  badge.textContent = reasonLabel(item.reason);
+  tdReason.appendChild(badge);
+  tr.appendChild(tdReason);
+
+  const tdMatch = document.createElement('td');
+  tdMatch.className = 'rq-match';
+  const top = item.candidates[0];
+  if (top) {
+    tdMatch.textContent = `${top.name} (${top.setCode.toUpperCase()} #${top.collectorNumber})`;
+  } else {
+    tdMatch.textContent = '—';
+  }
+  tr.appendChild(tdMatch);
+
+  const tdCount = document.createElement('td');
+  tdCount.className = 'rq-count';
+  tdCount.textContent = String(item.candidates.length);
+  tr.appendChild(tdCount);
+
+  const tdTime = document.createElement('td');
+  tdTime.className = 'rq-time';
+  tdTime.textContent = new Date(item.capturedAt).toLocaleString();
+  tr.appendChild(tdTime);
+
+  const tdAction = document.createElement('td');
+  tdAction.className = 'rq-action';
+  const reviewBtn = document.createElement('button');
+  reviewBtn.className = 'review-btn review-btn--secondary rq-review-btn';
+  reviewBtn.textContent = 'Review';
+  reviewBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    showReviewDetailMode(item);
+  });
+  tdAction.appendChild(reviewBtn);
+  tr.appendChild(tdAction);
+
+  tr.addEventListener('click', () => {
+    showReviewDetailMode(item);
+  });
+
+  return tr;
+}
+
+function renderQueueList(): void {
+  reviewQueueBody.innerHTML = '';
+  reviewItems.forEach((item, idx) => {
+    reviewQueueBody.appendChild(renderQueueRow(item, idx));
+  });
+  updateSelectAllState();
+}
+
+function updateSelectAllState(): void {
+  const allChecked = reviewItems.length > 0 && reviewItems.every((i) => reviewSelectedIds.has(i.id));
+  reviewSelectAll.checked = allChecked;
+  reviewSelectAll.indeterminate = !allChecked && reviewSelectedIds.size > 0;
+}
+
+function handleCheckboxClick(itemId: number, idx: number, shiftKey: boolean): void {
+  if (shiftKey && reviewLastClickedIdx >= 0) {
+    const lo = Math.min(reviewLastClickedIdx, idx);
+    const hi = Math.max(reviewLastClickedIdx, idx);
+    const shouldSelect = !reviewSelectedIds.has(itemId);
+    for (let i = lo; i <= hi; i++) {
+      const id = reviewItems[i]?.id;
+      if (id != null) {
+        if (shouldSelect) reviewSelectedIds.add(id);
+        else reviewSelectedIds.delete(id);
+      }
+    }
+  } else {
+    if (reviewSelectedIds.has(itemId)) reviewSelectedIds.delete(itemId);
+    else reviewSelectedIds.add(itemId);
+    reviewLastClickedIdx = idx;
+  }
+  renderQueueList();
+  updateBulkBar();
+}
+
+async function loadReviewQueue(): Promise<void> {
+  const countRes = await window.mimir.reviewCount();
+  if (countRes.ok) {
+    applyReviewCount(countRes.count);
+    const pendingLabel = document.getElementById('review-pending-label');
+    if (pendingLabel) {
+      pendingLabel.textContent =
+        countRes.count > 0 ? `${countRes.count} pending` : 'No items pending';
+    }
+  }
+
+  const res = await window.mimir.reviewListAll();
+  reviewItems = res.ok ? res.items : [];
+  reviewSelectedIds = new Set();
+  reviewLastClickedIdx = -1;
+  reviewBulkBar.hidden = true;
+
+  renderQueueList();
+  showReviewListMode();
+}
+
+reviewSelectAll.addEventListener('change', () => {
+  if (reviewSelectAll.checked) {
+    reviewItems.forEach((i) => reviewSelectedIds.add(i.id));
+  } else {
+    reviewSelectedIds.clear();
+  }
+  renderQueueList();
+  updateBulkBar();
+});
+
+reviewBackBtn.addEventListener('click', () => {
+  void loadReviewQueue();
+});
+
+reviewBulkFoilBtn.addEventListener('click', async () => {
+  const ids = [...reviewSelectedIds];
+  if (ids.length === 0) return;
+  reviewBulkFoilBtn.disabled = true;
+  const res = await window.mimir.reviewBulkConfirmFoil({ reviewIds: ids });
+  reviewBulkFoilBtn.disabled = false;
+  if (res.ok) {
+    await loadReviewQueue();
+    await refresh();
+  }
+});
+
+reviewBulkSetBtn.addEventListener('click', async () => {
+  const ids = [...reviewSelectedIds];
+  const setCode = reviewBulkSetBtn.dataset['setCode'];
+  if (ids.length === 0 || !setCode) return;
+  reviewBulkSetBtn.disabled = true;
+  const res = await window.mimir.reviewBulkConfirmSet({ reviewIds: ids, setCode });
+  if (!res.ok) reviewBulkSetBtn.disabled = false;
+  if (res.ok) {
+    await loadReviewQueue();
+    await refresh();
+  }
+});
+
+reviewBulkDismissAllBtn.addEventListener('click', async () => {
+  const ids = [...reviewSelectedIds];
+  if (ids.length === 0) return;
+  reviewBulkDismissAllBtn.disabled = true;
+  const res = await window.mimir.reviewBulkDismiss({ reviewIds: ids });
+  reviewBulkDismissAllBtn.disabled = false;
+  if (res.ok) {
+    await loadReviewQueue();
+  }
+});
 
 function closeSlideOut(): void {
   reviewPanelEl.hidden = true;
@@ -751,7 +1015,7 @@ function setActivePage(page: string): void {
   } else if (page === 'scan') {
     void enterScanPage();
   } else if (page === 'review') {
-    void reviewPagePanel.loadAndRender();
+    void loadReviewQueue();
   }
 }
 
@@ -979,27 +1243,41 @@ function drawOverlay(
   quad: import('./card-detector.js').Quad | null,
   phase: DetectorState['phase'],
 ): void {
-  const W = scanVideo.videoWidth || scanOverlay.width;
-  const H = scanVideo.videoHeight || scanOverlay.height;
-  scanOverlay.width = W;
-  scanOverlay.height = H;
+  // Use the canvas's CSS-rendered size as the drawing buffer so coordinates
+  // match the container exactly (avoids browser up/down-scaling artifacts).
+  const CW = scanOverlay.clientWidth;
+  const CH = scanOverlay.clientHeight;
+  if (CW === 0 || CH === 0) return;
+
+  scanOverlay.width = CW;
+  scanOverlay.height = CH;
 
   const ctx = scanOverlay.getContext('2d');
   if (!ctx) return;
-  ctx.clearRect(0, 0, W, H);
+  ctx.clearRect(0, 0, CW, CH);
 
   if (!quad || phase === 'idle') return;
 
+  // Map video-space coordinates to canvas-space, accounting for the
+  // object-fit:contain letterbox/pillarbox the browser adds to the video element.
+  const VW = scanVideo.videoWidth || CW;
+  const VH = scanVideo.videoHeight || CH;
+  const scale = Math.min(CW / VW, CH / VH);
+  const ox = (CW - VW * scale) / 2;
+  const oy = (CH - VH * scale) / 2;
+  const tx = (vx: number): number => ox + vx * scale;
+  const ty = (vy: number): number => oy + vy * scale;
+
   const [q0, q1, q2, q3] = quad;
   ctx.beginPath();
-  ctx.moveTo(q0.x, q0.y);
-  ctx.lineTo(q1.x, q1.y);
-  ctx.lineTo(q2.x, q2.y);
-  ctx.lineTo(q3.x, q3.y);
+  ctx.moveTo(tx(q0.x), ty(q0.y));
+  ctx.lineTo(tx(q1.x), ty(q1.y));
+  ctx.lineTo(tx(q2.x), ty(q2.y));
+  ctx.lineTo(tx(q3.x), ty(q3.y));
   ctx.closePath();
 
   ctx.strokeStyle = phase === 'cooldown' ? '#00FF00' : '#FFD700';
-  ctx.lineWidth = Math.max(2, W * 0.004);
+  ctx.lineWidth = Math.max(2, CW * 0.004);
   ctx.shadowColor = ctx.strokeStyle;
   ctx.shadowBlur = 8;
   ctx.stroke();
@@ -1271,7 +1549,9 @@ document.addEventListener('keydown', (e) => {
 window.mimir.onReviewPendingUpdate((event: ReviewCountDto) => {
   applyReviewCount(event.count);
   if (currentPage === 'review') {
-    void reviewPagePanel.loadAndRender();
+    if (reviewPageMode === 'list') {
+      void loadReviewQueue();
+    }
   } else if (currentPage === 'scan' && !reviewPanelEl.hidden) {
     void slideOutPanel.loadAndRender();
   }
