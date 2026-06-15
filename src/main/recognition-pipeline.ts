@@ -16,6 +16,8 @@ export interface HashedCard {
 
 export interface HashedCardWithCrop extends HashedCard {
   art_crop_path: string | null;
+  lang: string;
+  price_usd_foil: number | null;
 }
 
 export function getTopNCandidates(

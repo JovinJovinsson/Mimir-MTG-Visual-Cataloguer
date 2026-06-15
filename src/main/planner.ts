@@ -3,7 +3,20 @@ import type {
   CardsRow,
   CardsInsert,
   CatalogueAddAction,
+  Foil,
 } from '../shared/types.js';
+import {
+  type InferenceResult,
+  type InferenceThresholds,
+  DEFAULT_THRESHOLDS,
+  classifyInference,
+} from './field-inference.js';
+
+export interface FieldInferences {
+  foil: InferenceResult<Foil>;
+  language: InferenceResult<string>;
+  price: InferenceResult<number | null>;
+}
 
 function matchesDedupKey(row: CardsRow, input: AddCardInput): boolean {
   return (
@@ -54,4 +67,69 @@ export function planCatalogueAddition(
     last_seen_at: input.now,
   };
   return { kind: 'insert', row };
+}
+
+/**
+ * Like planCatalogueAddition but resolves foil/language/price from per-field inference results
+ * and annotates the resulting row with review_reasons and needs_review when fields are uncertain.
+ * Condition is always 'NM' (manual-only field, never inferred).
+ */
+export function planCatalogueAdditionWithInferences(
+  existing: CardsRow | null,
+  baseInput: Omit<AddCardInput, 'foil' | 'language' | 'price_usd' | 'condition'>,
+  inferences: FieldInferences,
+  thresholds: InferenceThresholds = DEFAULT_THRESHOLDS,
+): CatalogueAddAction {
+  const foilDecision = classifyInference(inferences.foil, thresholds);
+  const langDecision = classifyInference(inferences.language, thresholds);
+
+  const reviewReasons: string[] = [];
+
+  let foilValue: Foil;
+  if (foilDecision === 'accept') {
+    foilValue = inferences.foil.value;
+  } else if (foilDecision === 'accept-flag') {
+    foilValue = inferences.foil.value;
+    reviewReasons.push('low_confidence_field:foil');
+  } else {
+    foilValue = 'normal';
+    reviewReasons.push('low_confidence_field:foil');
+  }
+
+  let langValue: string;
+  if (langDecision === 'accept') {
+    langValue = inferences.language.value;
+  } else if (langDecision === 'accept-flag') {
+    langValue = inferences.language.value;
+    reviewReasons.push('low_confidence_field:language');
+  } else {
+    langValue = 'EN';
+    reviewReasons.push('low_confidence_field:language');
+  }
+
+  // Price absence is not user-actionable; use inferred value regardless of confidence.
+  const priceValue = inferences.price.value;
+
+  const fullInput: AddCardInput = {
+    ...baseInput,
+    foil: foilValue,
+    language: langValue,
+    price_usd: priceValue,
+    condition: 'NM',
+  };
+
+  const baseAction = planCatalogueAddition(existing, fullInput);
+
+  if (baseAction.kind === 'insert' && reviewReasons.length > 0) {
+    return {
+      kind: 'insert',
+      row: {
+        ...baseAction.row,
+        needs_review: 1,
+        review_reasons: JSON.stringify(reviewReasons),
+      },
+    };
+  }
+
+  return baseAction;
 }

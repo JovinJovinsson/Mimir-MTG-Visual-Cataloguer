@@ -32,6 +32,8 @@ import {
   type ReviewBulkConfirmSetResponse,
   type ReviewBulkDismissRequest,
   type ReviewBulkDismissResponse,
+  type ReviewConfirmFieldCorrectionsRequest,
+  type ReviewConfirmFieldCorrectionsResponse,
   type ReviewConfirmRequest,
   type ReviewConfirmResponse,
   type ReviewCountDto,
@@ -497,6 +499,21 @@ export function registerIpcHandlers(deps: IpcDeps): void {
               break;
           }
         }
+        broadcastReviewCount();
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.reviewConfirmFieldCorrections,
+    async (_event, req: ReviewConfirmFieldCorrectionsRequest): Promise<ReviewConfirmFieldCorrectionsResponse> => {
+      try {
+        catalogue.updateCardFields(req.cardId, { foil: req.foil, language: req.language });
+        catalogue.clearCardReviewState(req.cardId);
+        reviewQueueDb.resolveItem(req.reviewId, '');
         broadcastReviewCount();
         return { ok: true };
       } catch (err) {

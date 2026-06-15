@@ -3,6 +3,7 @@ import type { CardForRenderer, CollectionForRenderer, Condition, Foil, ScanForRe
 export type { ReviewItemDto };
 
 export const IPC_CHANNELS = {
+  reviewConfirmFieldCorrections: 'review:confirmFieldCorrections',
   addCardById: 'catalogue:addCardById',
   addCardByName: 'catalogue:addCardByName',
   listCards: 'catalogue:listCards',
@@ -268,7 +269,19 @@ export type ReviewBulkConfirmSetResponse =
   | { ok: true }
   | { ok: false; error: string };
 
+export interface ReviewConfirmFieldCorrectionsRequest {
+  reviewId: number;
+  cardId: number;
+  foil: Foil;
+  language: string;
+}
+
+export type ReviewConfirmFieldCorrectionsResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
 export interface MimirApi {
+  reviewConfirmFieldCorrections(req: ReviewConfirmFieldCorrectionsRequest): Promise<ReviewConfirmFieldCorrectionsResponse>;
   addCardById(req: AddCardByIdRequest): Promise<AddCardByIdResponse>;
   addCardByName(req: AddCardByNameRequest): Promise<AddCardByNameResponse>;
   listCards(): Promise<ListCardsResponse>;

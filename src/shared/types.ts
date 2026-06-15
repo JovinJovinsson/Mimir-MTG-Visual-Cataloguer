@@ -60,6 +60,7 @@ export interface CardForRenderer {
   price_usd: number | null;
   last_seen_at: number;
   needs_review: boolean;
+  review_reasons: string | null;
 }
 
 export interface CollectionRow {
@@ -97,7 +98,7 @@ export interface ScanForRenderer {
   thumbnail_path: string | null;
 }
 
-export type ReviewReason = 'ambiguous_identity' | 'unknown_card' | 'manual_flagged';
+export type ReviewReason = 'ambiguous_identity' | 'unknown_card' | 'manual_flagged' | 'low_confidence_field';
 
 export interface ReviewCandidate {
   scryfallId: string;
@@ -118,4 +119,8 @@ export interface ReviewItemDto {
   thumbnailPath: string | null;
   capturedAt: number;
   createdAt: number;
+  // Present only for low_confidence_field items
+  flaggedFields?: string[];
+  resolvedCardId?: number;
+  inferredValues?: Record<string, string>;
 }

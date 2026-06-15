@@ -21,6 +21,8 @@ export interface CatalogueDb {
   findCardByScryfallId(scryfallId: string, foil: string, condition: string, language: string, collectionId: number): CardsRow | null;
   findCardById(cardId: number): CardsRow | null;
   findCardInCollection(scryfallId: string, foil: string, condition: string, language: string, collectionId: number): CardsRow | null;
+  updateCardFields(cardId: number, updates: { foil: string; language: string }): void;
+  clearCardReviewState(cardId: number): void;
   listCards(): CardForRenderer[];
   listCollections(): CollectionForRenderer[];
   createCollection(name: string): number;
@@ -84,6 +86,14 @@ function wrap(db: Database.Database): CatalogueDb {
 
   const deleteCard = db.prepare(
     `DELETE FROM cards WHERE id = ?`,
+  );
+
+  const updateCardFieldsStmt = db.prepare(
+    `UPDATE cards SET foil = @foil, language = @language WHERE id = @id`,
+  );
+
+  const clearCardReviewStateStmt = db.prepare(
+    `UPDATE cards SET needs_review = 0, review_reasons = NULL WHERE id = ?`,
   );
 
   const listAll = db.prepare<[], CardsRow>(
@@ -192,6 +202,14 @@ function wrap(db: Database.Database): CatalogueDb {
       return findExisting.get({ scryfall_id: scryfallId, foil, condition, language, collection_id: collectionId }) ?? null;
     },
 
+    updateCardFields(cardId: number, updates: { foil: string; language: string }): void {
+      updateCardFieldsStmt.run({ id: cardId, foil: updates.foil, language: updates.language });
+    },
+
+    clearCardReviewState(cardId: number): void {
+      clearCardReviewStateStmt.run(cardId);
+    },
+
     listCards(): CardForRenderer[] {
       const rows = listAll.all();
       return rows.map((r) => ({
@@ -208,6 +226,7 @@ function wrap(db: Database.Database): CatalogueDb {
         price_usd: r.price_at_first_scan_usd,
         last_seen_at: r.last_seen_at,
         needs_review: r.needs_review === 1,
+        review_reasons: r.review_reasons,
       }));
     },
 

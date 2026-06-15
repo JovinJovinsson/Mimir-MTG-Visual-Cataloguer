@@ -88,11 +88,35 @@ export function openReviewQueueDb(db: Database): ReviewQueueDb {
   `);
 
   function rowToDto(row: ReviewQueueItemRow): ReviewItemDto {
+    const parsed = JSON.parse(row.candidates_json) as unknown;
+
+    // low_confidence_field items use an object payload; all other items use a raw array.
+    if (!Array.isArray(parsed)) {
+      const payload = parsed as {
+        candidates: ReviewCandidate[];
+        flaggedFields: string[];
+        cardId: number;
+        inferredValues: Record<string, string>;
+      };
+      return {
+        id: row.id,
+        scanId: row.scan_id,
+        reason: row.reason,
+        candidates: payload.candidates,
+        flaggedFields: payload.flaggedFields,
+        resolvedCardId: payload.cardId,
+        inferredValues: payload.inferredValues,
+        thumbnailPath: row.thumbnail_path,
+        capturedAt: row.captured_at,
+        createdAt: row.created_at,
+      };
+    }
+
     return {
       id: row.id,
       scanId: row.scan_id,
       reason: row.reason,
-      candidates: JSON.parse(row.candidates_json) as ReviewCandidate[],
+      candidates: parsed as ReviewCandidate[],
       thumbnailPath: row.thumbnail_path,
       capturedAt: row.captured_at,
       createdAt: row.created_at,

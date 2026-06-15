@@ -8,6 +8,14 @@ import {
   type HashedCardWithCrop,
 } from './recognition-pipeline.js';
 import { computePHash } from './phash.js';
+import {
+  inferFoil,
+  inferLanguage,
+  inferPrice,
+  classifyInference,
+  DEFAULT_THRESHOLDS,
+} from './field-inference.js';
+import { planCatalogueAdditionWithInferences, type FieldInferences } from './planner.js';
 import type { ScanDb } from './scan-db.js';
 import type { CatalogueDb } from './database.js';
 import type { ReviewQueueDb } from './review-queue-db.js';
@@ -99,7 +107,17 @@ export class ProcessingQueue extends EventEmitter {
 
     let phash: string;
     try {
-      phash = computePHash(decoded.rgba, decoded.width, decoded.height);
+      // Hash only the art region so our pHash is comparable to the art-crop
+      // phashes stored in the DB (which are computed from Scryfall art_crop images).
+      // MTG art box spans roughly x:5-95%, y:10-53% of the card face.
+      const art = cropRgba(
+        decoded.rgba, decoded.width, decoded.height,
+        Math.round(decoded.width * 0.05),
+        Math.round(decoded.height * 0.10),
+        Math.round(decoded.width * 0.95),
+        Math.round(decoded.height * 0.53),
+      );
+      phash = computePHash(art.rgba, art.width, art.height);
     } catch {
       scanDb.updateScanRecognition(item.scanId, {
         phash: null,
@@ -155,26 +173,111 @@ export class ProcessingQueue extends EventEmitter {
       return;
     }
 
-    // Silent accept
-    const addResult = catalogueDb.addCard({
-      scryfall_id: best.scryfallId,
-      name: best.name,
-      set_code: best.setCode,
-      set_name: best.setName,
-      collector_number: best.collectorNumber,
-      foil: 'normal',
-      condition: 'NM',
-      language: 'EN',
-      price_usd: best.priceUsd,
+    // Look up the full card data for inference (ReviewCandidate lacks lang/priceUsdFoil)
+    const bestCard = allCards.find((c) => c.scryfall_id === best.scryfallId);
+
+    // Run per-field inference on the accepted card
+    const foilResult = inferFoil(decoded.rgba, decoded.width, decoded.height);
+    const langResult = inferLanguage(bestCard?.lang ?? null);
+    const priceResult = inferPrice(best.priceUsd, bestCard?.price_usd_foil ?? null, foilResult.value);
+
+    const inferences: FieldInferences = {
+      foil: foilResult,
+      language: langResult,
+      price: priceResult,
+    };
+
+    const foilDecision = classifyInference(foilResult, DEFAULT_THRESHOLDS);
+    const langDecision = classifyInference(langResult, DEFAULT_THRESHOLDS);
+    const hasFlagged = foilDecision !== 'accept' || langDecision !== 'accept';
+
+    const collectionId = catalogueDb.inboxCollectionId();
+    const existing = catalogueDb.findCardByScryfallId(
+      best.scryfallId,
+      foilResult.value,
+      'NM',
+      langResult.value,
+      collectionId,
+    );
+
+    const addAction = planCatalogueAdditionWithInferences(
+      existing,
+      {
+        scryfall_id: best.scryfallId,
+        name: best.name,
+        set_code: best.setCode,
+        set_name: best.setName,
+        collector_number: best.collectorNumber,
+        collection_id: collectionId,
+        now: item.capturedAt,
+      },
+      inferences,
+    );
+
+    const cardId = catalogueDb.executeAction(addAction);
+
+    const inferencesJson = JSON.stringify({
+      foil: foilResult.value,
+      foil_confidence: foilResult.confidence,
+      language: langResult.value,
+      language_confidence: langResult.confidence,
     });
 
-    const inferencesJson = JSON.stringify({ foil: 'normal', condition: 'NM', language: 'EN' });
     scanDb.updateScanRecognition(item.scanId, {
       phash,
       confidenceScore,
-      cardId: addResult.id,
+      cardId,
       inferencesJson,
-      neededManualReview: 0,
+      neededManualReview: hasFlagged ? 1 : 0,
     });
+
+    // Insert a low_confidence_field review queue entry when fields are uncertain
+    if (hasFlagged && addAction.kind === 'insert') {
+      const flaggedFields: string[] = [];
+      if (foilDecision !== 'accept') flaggedFields.push('foil');
+      if (langDecision !== 'accept') flaggedFields.push('language');
+
+      const candidate = {
+        scryfallId: best.scryfallId,
+        name: best.name,
+        setCode: best.setCode,
+        setName: best.setName,
+        collectorNumber: best.collectorNumber,
+        priceUsd: priceResult.value,
+        hammingDistance: best.hammingDistance,
+        artCropPath: best.artCropPath ?? null,
+      };
+
+      const inferredValues: Record<string, string> = {};
+      if (foilDecision !== 'accept') inferredValues['foil'] = foilResult.value;
+      if (langDecision !== 'accept') inferredValues['language'] = langResult.value;
+
+      reviewQueueDb.insertReviewItem({
+        scanId: item.scanId,
+        reason: 'low_confidence_field',
+        candidatesJson: JSON.stringify({
+          candidates: [candidate],
+          flaggedFields,
+          cardId,
+          inferredValues,
+        }),
+        createdAt: item.capturedAt,
+      });
+      onReviewCountChanged?.();
+    }
   }
+}
+
+function cropRgba(
+  src: Uint8Array, srcW: number, srcH: number,
+  x1: number, y1: number, x2: number, y2: number,
+): { rgba: Uint8Array; width: number; height: number } {
+  const cropW = Math.max(1, x2 - x1);
+  const cropH = Math.max(1, y2 - y1);
+  const dst = new Uint8Array(cropW * cropH * 4);
+  for (let y = 0; y < cropH; y++) {
+    const srcRow = ((y1 + y) * srcW + x1) * 4;
+    dst.set(src.subarray(srcRow, srcRow + cropW * 4), y * cropW * 4);
+  }
+  return { rgba: dst, width: cropW, height: cropH };
 }

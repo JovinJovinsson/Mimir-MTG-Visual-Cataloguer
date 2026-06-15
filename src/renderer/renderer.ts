@@ -35,6 +35,11 @@ interface ReviewPanelDom {
   btnConfirm: HTMLButtonElement;
   btnSkip: HTMLButtonElement;
   btnDismiss: HTMLButtonElement;
+  fieldCorrections?: HTMLDivElement;
+  foilFoilRow?: HTMLDivElement;
+  foilSelect?: HTMLSelectElement;
+  langRow?: HTMLDivElement;
+  langInput?: HTMLInputElement;
   pendingLabel?: HTMLElement;
   onItemActioned?: () => Promise<void>;
 }
@@ -163,7 +168,6 @@ class ReviewPanelController {
   private renderItem(item: ReviewItemDto): void {
     this._currentItem = item;
     this._selectedIndex = -1;
-    this.dom.btnConfirm.disabled = true;
 
     if (item.thumbnailPath) {
       this.dom.snapshot.src = `file://${item.thumbnailPath}`;
@@ -175,15 +179,65 @@ class ReviewPanelController {
 
     this.dom.reasonBadge.textContent = reasonLabel(item.reason);
     this.dom.reasonBadge.className = `review-reason-badge reason-${item.reason}`;
+
+    if (item.reason === 'low_confidence_field') {
+      this.renderFieldCorrectionMode(item);
+    } else {
+      this.renderCandidateMode(item);
+    }
+
+    this.dom.empty.hidden = true;
+    this.dom.content.hidden = false;
+  }
+
+  private renderCandidateMode(item: ReviewItemDto): void {
+    this.dom.btnConfirm.disabled = true;
     this.dom.itemMeta.textContent =
       `Captured ${new Date(item.capturedAt).toLocaleString()} · ${item.candidates.length} candidate(s)`;
+
+    // Show candidate picker, hide field corrections
+    this.dom.toggleGallery.hidden = false;
+    this.dom.toggleList.hidden = false;
+    if (this.dom.fieldCorrections) this.dom.fieldCorrections.hidden = true;
 
     this.renderGallery(item);
     this.renderList(item);
     this.applyViewMode();
+  }
 
-    this.dom.empty.hidden = true;
-    this.dom.content.hidden = false;
+  private renderFieldCorrectionMode(item: ReviewItemDto): void {
+    // Hide candidate picker, show field correction inputs
+    this.dom.toggleGallery.hidden = true;
+    this.dom.toggleList.hidden = true;
+    this.dom.gallery.hidden = true;
+    this.dom.list.hidden = true;
+
+    const flagged = item.flaggedFields ?? [];
+    const inferred = item.inferredValues ?? {};
+
+    this.dom.itemMeta.textContent =
+      `Captured ${new Date(item.capturedAt).toLocaleString()} · Please confirm the flagged field(s)`;
+
+    if (this.dom.fieldCorrections) {
+      this.dom.fieldCorrections.hidden = false;
+
+      if (this.dom.foilFoilRow && this.dom.foilSelect) {
+        this.dom.foilFoilRow.hidden = !flagged.includes('foil');
+        if (flagged.includes('foil')) {
+          this.dom.foilSelect.value = inferred['foil'] ?? 'normal';
+        }
+      }
+
+      if (this.dom.langRow && this.dom.langInput) {
+        this.dom.langRow.hidden = !flagged.includes('language');
+        if (flagged.includes('language')) {
+          this.dom.langInput.value = inferred['language'] ?? 'EN';
+        }
+      }
+    }
+
+    // Confirm is always enabled for field correction items
+    this.dom.btnConfirm.disabled = false;
   }
 
   showEmpty(): void {
@@ -228,13 +282,46 @@ class ReviewPanelController {
   }
 
   private async handleConfirm(): Promise<void> {
-    if (!this._currentItem || this._selectedIndex < 0) return;
+    if (!this._currentItem) return;
+
+    if (this._currentItem.reason === 'low_confidence_field') {
+      await this.handleFieldCorrectionConfirm();
+      return;
+    }
+
+    if (this._selectedIndex < 0) return;
     const candidate = this._currentItem.candidates[this._selectedIndex];
     if (!candidate) return;
     this.dom.btnConfirm.disabled = true;
     const res = await window.mimir.reviewConfirm({
       reviewId: this._currentItem.id,
       scryfallId: candidate.scryfallId,
+    });
+    if (res.ok) {
+      if (this.dom.onItemActioned) {
+        await this.dom.onItemActioned();
+      } else {
+        await this.loadAndRender();
+        await refresh();
+      }
+    } else {
+      this.dom.btnConfirm.disabled = false;
+    }
+  }
+
+  private async handleFieldCorrectionConfirm(): Promise<void> {
+    const item = this._currentItem;
+    if (!item || item.resolvedCardId == null) return;
+
+    const foil = (this.dom.foilSelect?.value ?? 'normal') as 'normal' | 'foil' | 'etched';
+    const language = (this.dom.langInput?.value?.trim() ?? 'EN') || 'EN';
+
+    this.dom.btnConfirm.disabled = true;
+    const res = await window.mimir.reviewConfirmFieldCorrections({
+      reviewId: item.id,
+      cardId: item.resolvedCardId,
+      foil,
+      language,
     });
     if (res.ok) {
       if (this.dom.onItemActioned) {
@@ -338,6 +425,11 @@ const reviewPagePanel = new ReviewPanelController({
   btnConfirm: document.getElementById('review-btn-confirm') as HTMLButtonElement,
   btnSkip: document.getElementById('review-btn-skip') as HTMLButtonElement,
   btnDismiss: document.getElementById('review-btn-dismiss') as HTMLButtonElement,
+  fieldCorrections: document.getElementById('review-field-corrections') as HTMLDivElement,
+  foilFoilRow: document.getElementById('review-field-foil-row') as HTMLDivElement,
+  foilSelect: document.getElementById('review-field-foil-select') as HTMLSelectElement,
+  langRow: document.getElementById('review-field-lang-row') as HTMLDivElement,
+  langInput: document.getElementById('review-field-lang-input') as HTMLInputElement,
   pendingLabel: document.getElementById('review-pending-label') as HTMLSpanElement,
   onItemActioned: async () => {
     await loadReviewQueue();
@@ -365,6 +457,11 @@ const slideOutPanel = new ReviewPanelController({
   btnConfirm: document.getElementById('slide-btn-confirm') as HTMLButtonElement,
   btnSkip: document.getElementById('slide-btn-skip') as HTMLButtonElement,
   btnDismiss: document.getElementById('slide-btn-dismiss') as HTMLButtonElement,
+  fieldCorrections: document.getElementById('slide-field-corrections') as HTMLDivElement,
+  foilFoilRow: document.getElementById('slide-field-foil-row') as HTMLDivElement,
+  foilSelect: document.getElementById('slide-field-foil-select') as HTMLSelectElement,
+  langRow: document.getElementById('slide-field-lang-row') as HTMLDivElement,
+  langInput: document.getElementById('slide-field-lang-input') as HTMLInputElement,
   pendingLabel: document.getElementById('slide-pending-label') as HTMLSpanElement,
 });
 
@@ -641,6 +738,7 @@ function reasonLabel(reason: string): string {
     case 'ambiguous_identity': return 'Ambiguous match';
     case 'unknown_card': return 'Unknown card';
     case 'manual_flagged': return 'Flagged for review';
+    case 'low_confidence_field': return 'Confirm field(s)';
     default: return reason;
   }
 }

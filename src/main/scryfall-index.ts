@@ -127,6 +127,8 @@ export interface HashedCard {
 
 export interface HashedCardWithCrop extends HashedCard {
   art_crop_path: string | null;
+  lang: string;
+  price_usd_foil: number | null;
 }
 
 export interface ScryfallIndexDb {
@@ -274,7 +276,8 @@ function wrap(db: Database.Database): ScryfallIndexDb {
   `);
 
   const getAllHashedCardsWithCropStmt = db.prepare<[], HashedCardWithCrop>(`
-    SELECT scryfall_id, name, set_code, set_name, collector_number, price_usd, phash, art_crop_path
+    SELECT scryfall_id, name, set_code, set_name, collector_number, price_usd, phash, art_crop_path,
+           COALESCE(lang, 'en') AS lang, price_usd_foil
     FROM scryfall_cards
     WHERE phash IS NOT NULL
   `);

@@ -31,6 +31,8 @@ import {
   type ReviewBulkConfirmSetResponse,
   type ReviewBulkDismissRequest,
   type ReviewBulkDismissResponse,
+  type ReviewConfirmFieldCorrectionsRequest,
+  type ReviewConfirmFieldCorrectionsResponse,
   type ReviewConfirmRequest,
   type ReviewConfirmResponse,
   type ReviewCountDto,
@@ -51,6 +53,8 @@ import {
 } from '../shared/ipc.js';
 
 const api: MimirApi = {
+  reviewConfirmFieldCorrections: (req: ReviewConfirmFieldCorrectionsRequest): Promise<ReviewConfirmFieldCorrectionsResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.reviewConfirmFieldCorrections, req),
   addCardById: (req: AddCardByIdRequest): Promise<AddCardByIdResponse> =>
     ipcRenderer.invoke(IPC_CHANNELS.addCardById, req),
   addCardByName: (req: AddCardByNameRequest): Promise<AddCardByNameResponse> =>

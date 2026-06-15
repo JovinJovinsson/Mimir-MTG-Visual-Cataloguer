@@ -263,6 +263,22 @@
               </table>
             </div>
 
+            <!-- Field corrections (shown for low_confidence_field items) -->
+            <div id="review-field-corrections" class="review-field-corrections" hidden>
+              <div class="review-field-correction-row" id="review-field-foil-row" hidden>
+                <label class="review-field-label" for="review-field-foil-select">Foil</label>
+                <select id="review-field-foil-select" class="review-field-select">
+                  <option value="normal">Normal</option>
+                  <option value="foil">Foil</option>
+                  <option value="etched">Etched</option>
+                </select>
+              </div>
+              <div class="review-field-correction-row" id="review-field-lang-row" hidden>
+                <label class="review-field-label" for="review-field-lang-input">Language</label>
+                <input id="review-field-lang-input" class="review-field-input" type="text" maxlength="4" />
+              </div>
+            </div>
+
             <!-- Bottom: action buttons -->
             <div class="review-actions">
               <button id="review-btn-confirm" class="review-btn review-btn--primary" disabled>
@@ -366,6 +382,22 @@
               </thead>
               <tbody id="slide-list-body"></tbody>
             </table>
+          </div>
+
+          <!-- Field corrections (shown for low_confidence_field items) -->
+          <div id="slide-field-corrections" class="review-field-corrections" hidden>
+            <div class="review-field-correction-row" id="slide-field-foil-row" hidden>
+              <label class="review-field-label" for="slide-field-foil-select">Foil</label>
+              <select id="slide-field-foil-select" class="review-field-select">
+                <option value="normal">Normal</option>
+                <option value="foil">Foil</option>
+                <option value="etched">Etched</option>
+              </select>
+            </div>
+            <div class="review-field-correction-row" id="slide-field-lang-row" hidden>
+              <label class="review-field-label" for="slide-field-lang-input">Language</label>
+              <input id="slide-field-lang-input" class="review-field-input" type="text" maxlength="4" />
+            </div>
           </div>
 
           <div class="review-actions">
