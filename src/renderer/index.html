@@ -90,6 +90,10 @@
           <header class="main-header scan-header">
             <h1>Scan</h1>
             <div class="scan-controls">
+              <button id="scan-review-toggle" class="scan-review-toggle" title="Toggle review panel (R)">
+                Review
+                <span id="scan-review-count" class="review-count">0</span>
+              </button>
               <label class="scan-camera-label" for="camera-select">Camera</label>
               <select id="camera-select" class="camera-select"></select>
             </div>
@@ -237,7 +241,63 @@
         </section>
       </main>
 
-      <aside id="review-panel" aria-label="Review panel (slide-out, reserved for 008)" hidden></aside>
+      <aside id="review-panel" aria-label="Review panel" hidden>
+        <div class="slide-panel-header">
+          <h2 class="slide-panel-title">Review</h2>
+          <span id="slide-pending-label" class="muted slide-pending-label"></span>
+          <button class="slide-close-btn" id="slide-close-btn" aria-label="Close review panel">✕</button>
+        </div>
+
+        <div id="slide-review-empty" class="review-empty" hidden>
+          <div class="review-empty-icon">✓</div>
+          <p>All caught up</p>
+        </div>
+
+        <div id="slide-review-content" hidden>
+          <div class="review-top">
+            <div class="review-snapshot-wrap">
+              <img id="slide-snapshot" class="review-snapshot" src="" alt="Captured scan" />
+              <div class="review-snapshot-label">Captured scan</div>
+            </div>
+            <div class="review-identity">
+              <div class="review-reason-badge" id="slide-reason-badge"></div>
+              <div class="review-item-meta" id="slide-item-meta"></div>
+            </div>
+          </div>
+
+          <div class="review-picker-header">
+            <span class="review-picker-title">Candidates</span>
+            <div class="review-view-toggle">
+              <button class="review-toggle-btn is-active" id="slide-toggle-gallery">Gallery</button>
+              <button class="review-toggle-btn" id="slide-toggle-list">List</button>
+            </div>
+          </div>
+
+          <div id="slide-gallery" class="review-gallery"></div>
+
+          <div id="slide-list" class="review-list" hidden>
+            <table class="review-list-table">
+              <thead>
+                <tr>
+                  <th class="rl-key">Key</th>
+                  <th class="rl-name">Name</th>
+                  <th class="rl-set">Set</th>
+                  <th class="rl-cn">#</th>
+                  <th class="rl-dist">Dist</th>
+                  <th class="rl-price">Price</th>
+                </tr>
+              </thead>
+              <tbody id="slide-list-body"></tbody>
+            </table>
+          </div>
+
+          <div class="review-actions">
+            <button id="slide-btn-confirm" class="review-btn review-btn--primary" disabled>Confirm</button>
+            <button id="slide-btn-skip" class="review-btn review-btn--secondary">Skip</button>
+            <button id="slide-btn-dismiss" class="review-btn review-btn--danger">Not a card</button>
+          </div>
+        </div>
+      </aside>
     </div>
 
     <div id="wizard-overlay" class="wizard-overlay" hidden>

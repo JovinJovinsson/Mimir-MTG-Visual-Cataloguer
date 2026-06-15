@@ -15,24 +15,245 @@ import type {
   SetWithStatusDto,
 } from '../shared/ipc.js';
 
-// --- Review page elements ---
-const reviewCountEl = document.getElementById('review-count') as HTMLSpanElement;
-const reviewPendingLabel = document.getElementById('review-pending-label') as HTMLSpanElement;
-const reviewEmpty = document.getElementById('review-empty') as HTMLDivElement;
-const reviewPanelContent = document.getElementById('review-panel-content') as HTMLDivElement;
-const reviewSnapshot = document.getElementById('review-snapshot') as HTMLImageElement;
-const reviewReasonBadge = document.getElementById('review-reason-badge') as HTMLDivElement;
-const reviewItemMeta = document.getElementById('review-item-meta') as HTMLDivElement;
-const reviewToggleGallery = document.getElementById('review-toggle-gallery') as HTMLButtonElement;
-const reviewToggleList = document.getElementById('review-toggle-list') as HTMLButtonElement;
-const reviewGallery = document.getElementById('review-gallery') as HTMLDivElement;
-const reviewList = document.getElementById('review-list') as HTMLDivElement;
-const reviewListBody = document.getElementById('review-list-body') as HTMLTableSectionElement;
-const reviewBtnConfirm = document.getElementById('review-btn-confirm') as HTMLButtonElement;
-const reviewBtnSkip = document.getElementById('review-btn-skip') as HTMLButtonElement;
-const reviewBtnDismiss = document.getElementById('review-btn-dismiss') as HTMLButtonElement;
+// ── ReviewPanelController ─────────────────────────────────────────────────────
+//
+// Shared class used by both the dedicated Review page and the scan-screen
+// slide-out. Each instance owns its own DOM refs and state; the same business
+// logic paths are followed regardless of where the panel is mounted.
 
-// --- Add-card form ---
+interface ReviewPanelDom {
+  empty: HTMLDivElement;
+  content: HTMLDivElement;
+  snapshot: HTMLImageElement;
+  reasonBadge: HTMLDivElement;
+  itemMeta: HTMLDivElement;
+  toggleGallery: HTMLButtonElement;
+  toggleList: HTMLButtonElement;
+  gallery: HTMLDivElement;
+  list: HTMLDivElement;
+  listBody: HTMLTableSectionElement;
+  btnConfirm: HTMLButtonElement;
+  btnSkip: HTMLButtonElement;
+  btnDismiss: HTMLButtonElement;
+  pendingLabel?: HTMLElement;
+}
+
+class ReviewPanelController {
+  private dom: ReviewPanelDom;
+  private _currentItem: ReviewItemDto | null = null;
+  private _selectedIndex = -1;
+  private viewMode: 'gallery' | 'list' = 'gallery';
+
+  constructor(dom: ReviewPanelDom) {
+    this.dom = dom;
+    this.bindActions();
+  }
+
+  get currentItem(): ReviewItemDto | null { return this._currentItem; }
+  get btnConfirm(): HTMLButtonElement { return this.dom.btnConfirm; }
+  get btnSkip(): HTMLButtonElement { return this.dom.btnSkip; }
+  get btnDismiss(): HTMLButtonElement { return this.dom.btnDismiss; }
+
+  selectCandidate(index: number): void {
+    if (!this._currentItem) return;
+    if (index < 0 || index >= this._currentItem.candidates.length) return;
+    this._selectedIndex = index;
+    this.dom.btnConfirm.disabled = false;
+    const cards = this.dom.gallery.querySelectorAll<HTMLDivElement>('.review-candidate');
+    cards.forEach((c, i) => c.classList.toggle('is-selected', i === index));
+    const rows = this.dom.listBody.querySelectorAll<HTMLTableRowElement>('tr');
+    rows.forEach((r, i) => r.classList.toggle('is-selected', i === index));
+  }
+
+  private applyViewMode(): void {
+    const isGallery = this.viewMode === 'gallery';
+    this.dom.gallery.hidden = !isGallery;
+    this.dom.list.hidden = isGallery;
+    this.dom.toggleGallery.classList.toggle('is-active', isGallery);
+    this.dom.toggleList.classList.toggle('is-active', !isGallery);
+  }
+
+  private renderGallery(item: ReviewItemDto): void {
+    this.dom.gallery.innerHTML = '';
+    item.candidates.forEach((candidate, i) => {
+      const div = document.createElement('div');
+      div.className = 'review-candidate';
+      if (i === this._selectedIndex) div.classList.add('is-selected');
+
+      const keyBadge = document.createElement('div');
+      keyBadge.className = 'review-candidate-key';
+      keyBadge.textContent = String(i + 1);
+      div.appendChild(keyBadge);
+
+      if (candidate.artCropPath) {
+        const img = document.createElement('img');
+        img.className = 'review-candidate-art';
+        img.src = `file://${candidate.artCropPath}`;
+        img.alt = candidate.name;
+        div.appendChild(img);
+      } else {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'review-candidate-art-placeholder';
+        placeholder.textContent = 'No art';
+        div.appendChild(placeholder);
+      }
+
+      const body = document.createElement('div');
+      body.className = 'review-candidate-body';
+      const name = document.createElement('div');
+      name.className = 'review-candidate-name';
+      name.textContent = candidate.name;
+      body.appendChild(name);
+      const meta = document.createElement('div');
+      meta.className = 'review-candidate-meta';
+      meta.textContent = `${candidate.setCode.toUpperCase()} #${candidate.collectorNumber}`;
+      body.appendChild(meta);
+      div.appendChild(body);
+
+      div.addEventListener('click', () => this.selectCandidate(i));
+      this.dom.gallery.appendChild(div);
+    });
+  }
+
+  private renderList(item: ReviewItemDto): void {
+    this.dom.listBody.innerHTML = '';
+    item.candidates.forEach((candidate, i) => {
+      const tr = document.createElement('tr');
+      if (i === this._selectedIndex) tr.classList.add('is-selected');
+
+      const tdKey = document.createElement('td');
+      tdKey.className = 'rl-key';
+      tdKey.textContent = String(i + 1);
+      tr.appendChild(tdKey);
+
+      const tdName = document.createElement('td');
+      tdName.textContent = candidate.name;
+      tr.appendChild(tdName);
+
+      const tdSet = document.createElement('td');
+      tdSet.className = 'rl-set';
+      tdSet.textContent = candidate.setCode.toUpperCase();
+      tr.appendChild(tdSet);
+
+      const tdCn = document.createElement('td');
+      tdCn.className = 'rl-cn';
+      tdCn.textContent = candidate.collectorNumber;
+      tr.appendChild(tdCn);
+
+      const tdDist = document.createElement('td');
+      tdDist.className = 'rl-dist';
+      tdDist.textContent = String(candidate.hammingDistance);
+      tr.appendChild(tdDist);
+
+      const tdPrice = document.createElement('td');
+      tdPrice.className = 'rl-price';
+      tdPrice.textContent = formatPrice(candidate.priceUsd);
+      tr.appendChild(tdPrice);
+
+      tr.addEventListener('click', () => this.selectCandidate(i));
+      this.dom.listBody.appendChild(tr);
+    });
+  }
+
+  private renderItem(item: ReviewItemDto): void {
+    this._currentItem = item;
+    this._selectedIndex = -1;
+    this.dom.btnConfirm.disabled = true;
+
+    if (item.thumbnailPath) {
+      this.dom.snapshot.src = `file://${item.thumbnailPath}`;
+      this.dom.snapshot.hidden = false;
+    } else {
+      this.dom.snapshot.src = '';
+      this.dom.snapshot.hidden = true;
+    }
+
+    this.dom.reasonBadge.textContent = reasonLabel(item.reason);
+    this.dom.reasonBadge.className = `review-reason-badge reason-${item.reason}`;
+    this.dom.itemMeta.textContent =
+      `Captured ${new Date(item.capturedAt).toLocaleString()} · ${item.candidates.length} candidate(s)`;
+
+    this.renderGallery(item);
+    this.renderList(item);
+    this.applyViewMode();
+
+    this.dom.empty.hidden = true;
+    this.dom.content.hidden = false;
+  }
+
+  showEmpty(): void {
+    this._currentItem = null;
+    this._selectedIndex = -1;
+    this.dom.btnConfirm.disabled = true;
+    this.dom.empty.hidden = false;
+    this.dom.content.hidden = true;
+  }
+
+  async loadAndRender(): Promise<void> {
+    const countRes = await window.mimir.reviewCount();
+    if (countRes.ok) {
+      applyReviewCount(countRes.count);
+      if (this.dom.pendingLabel) {
+        this.dom.pendingLabel.textContent =
+          countRes.count > 0 ? `${countRes.count} pending` : 'No items pending';
+      }
+    }
+
+    const res = await window.mimir.reviewListPending();
+    if (!res.ok) { this.showEmpty(); return; }
+    const item = res.items[0];
+    if (!item) { this.showEmpty(); return; }
+    this.renderItem(item);
+  }
+
+  private bindActions(): void {
+    this.dom.toggleGallery.addEventListener('click', () => {
+      this.viewMode = 'gallery';
+      this.applyViewMode();
+      if (this._currentItem) this.renderGallery(this._currentItem);
+    });
+    this.dom.toggleList.addEventListener('click', () => {
+      this.viewMode = 'list';
+      this.applyViewMode();
+      if (this._currentItem) this.renderList(this._currentItem);
+    });
+    this.dom.btnConfirm.addEventListener('click', () => { void this.handleConfirm(); });
+    this.dom.btnSkip.addEventListener('click', () => { void this.handleSkip(); });
+    this.dom.btnDismiss.addEventListener('click', () => { void this.handleDismiss(); });
+  }
+
+  private async handleConfirm(): Promise<void> {
+    if (!this._currentItem || this._selectedIndex < 0) return;
+    const candidate = this._currentItem.candidates[this._selectedIndex];
+    if (!candidate) return;
+    this.dom.btnConfirm.disabled = true;
+    const res = await window.mimir.reviewConfirm({
+      reviewId: this._currentItem.id,
+      scryfallId: candidate.scryfallId,
+    });
+    if (res.ok) {
+      await this.loadAndRender();
+      await refresh();
+    } else {
+      this.dom.btnConfirm.disabled = false;
+    }
+  }
+
+  private async handleSkip(): Promise<void> {
+    if (!this._currentItem) return;
+    await window.mimir.reviewSkip({ reviewId: this._currentItem.id });
+    await this.loadAndRender();
+  }
+
+  private async handleDismiss(): Promise<void> {
+    if (!this._currentItem) return;
+    await window.mimir.reviewDismiss({ reviewId: this._currentItem.id });
+    await this.loadAndRender();
+  }
+}
+
+// ── Catalogue page elements ───────────────────────────────────────────────────
+
 const form = document.getElementById('add-card-form') as HTMLFormElement;
 const input = document.getElementById('card-name-input') as HTMLInputElement;
 const submitButton = form.querySelector('button[type="submit"]') as HTMLButtonElement;
@@ -47,6 +268,8 @@ const bannerPhase = document.getElementById('bootstrap-banner-phase') as HTMLSpa
 const bannerDetail = document.getElementById('bootstrap-banner-detail') as HTMLSpanElement;
 const bannerFill = document.getElementById('bootstrap-banner-fill') as HTMLDivElement;
 
+// ── Wizard elements ───────────────────────────────────────────────────────────
+
 const wizardOverlay = document.getElementById('wizard-overlay') as HTMLDivElement;
 const wizardFullBtn = document.getElementById('wizard-full') as HTMLButtonElement;
 const wizardProgress = document.getElementById('wizard-progress') as HTMLDivElement;
@@ -58,6 +281,74 @@ const wizardError = document.getElementById('wizard-error') as HTMLDivElement;
 const wizardErrorMessage = document.getElementById('wizard-error-message') as HTMLSpanElement;
 const wizardRetry = document.getElementById('wizard-retry') as HTMLButtonElement;
 const wizardOptions = wizardFullBtn.parentElement as HTMLDivElement;
+
+// ── Review panel: sidebar count badge ────────────────────────────────────────
+
+const reviewCountEl = document.getElementById('review-count') as HTMLSpanElement;
+const scanReviewCountEl = document.getElementById('scan-review-count') as HTMLSpanElement;
+
+// ── Review page panel instance ────────────────────────────────────────────────
+
+const reviewPagePanel = new ReviewPanelController({
+  empty: document.getElementById('review-empty') as HTMLDivElement,
+  content: document.getElementById('review-panel-content') as HTMLDivElement,
+  snapshot: document.getElementById('review-snapshot') as HTMLImageElement,
+  reasonBadge: document.getElementById('review-reason-badge') as HTMLDivElement,
+  itemMeta: document.getElementById('review-item-meta') as HTMLDivElement,
+  toggleGallery: document.getElementById('review-toggle-gallery') as HTMLButtonElement,
+  toggleList: document.getElementById('review-toggle-list') as HTMLButtonElement,
+  gallery: document.getElementById('review-gallery') as HTMLDivElement,
+  list: document.getElementById('review-list') as HTMLDivElement,
+  listBody: document.getElementById('review-list-body') as HTMLTableSectionElement,
+  btnConfirm: document.getElementById('review-btn-confirm') as HTMLButtonElement,
+  btnSkip: document.getElementById('review-btn-skip') as HTMLButtonElement,
+  btnDismiss: document.getElementById('review-btn-dismiss') as HTMLButtonElement,
+  pendingLabel: document.getElementById('review-pending-label') as HTMLSpanElement,
+});
+
+// ── Slide-out panel instance (scan page) ─────────────────────────────────────
+
+const reviewPanelEl = document.getElementById('review-panel') as HTMLElement;
+const scanReviewToggleBtn = document.getElementById('scan-review-toggle') as HTMLButtonElement;
+const slideCloseBtn = document.getElementById('slide-close-btn') as HTMLButtonElement;
+
+const slideOutPanel = new ReviewPanelController({
+  empty: document.getElementById('slide-review-empty') as HTMLDivElement,
+  content: document.getElementById('slide-review-content') as HTMLDivElement,
+  snapshot: document.getElementById('slide-snapshot') as HTMLImageElement,
+  reasonBadge: document.getElementById('slide-reason-badge') as HTMLDivElement,
+  itemMeta: document.getElementById('slide-item-meta') as HTMLDivElement,
+  toggleGallery: document.getElementById('slide-toggle-gallery') as HTMLButtonElement,
+  toggleList: document.getElementById('slide-toggle-list') as HTMLButtonElement,
+  gallery: document.getElementById('slide-gallery') as HTMLDivElement,
+  list: document.getElementById('slide-list') as HTMLDivElement,
+  listBody: document.getElementById('slide-list-body') as HTMLTableSectionElement,
+  btnConfirm: document.getElementById('slide-btn-confirm') as HTMLButtonElement,
+  btnSkip: document.getElementById('slide-btn-skip') as HTMLButtonElement,
+  btnDismiss: document.getElementById('slide-btn-dismiss') as HTMLButtonElement,
+  pendingLabel: document.getElementById('slide-pending-label') as HTMLSpanElement,
+});
+
+function openSlideOut(): void {
+  reviewPanelEl.hidden = false;
+  scanReviewToggleBtn.classList.add('is-open');
+  void slideOutPanel.loadAndRender();
+}
+
+function closeSlideOut(): void {
+  reviewPanelEl.hidden = true;
+  scanReviewToggleBtn.classList.remove('is-open');
+}
+
+function toggleSlideOut(): void {
+  if (reviewPanelEl.hidden) openSlideOut();
+  else closeSlideOut();
+}
+
+scanReviewToggleBtn.addEventListener('click', toggleSlideOut);
+slideCloseBtn.addEventListener('click', closeSlideOut);
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
 
 interface AutocompleteState {
   hits: AutocompleteHitDto[];
@@ -81,6 +372,29 @@ function formatPrice(p: number | null): string {
 function formatLastSeen(ts: number): string {
   return new Date(ts).toLocaleString();
 }
+
+function reasonLabel(reason: string): string {
+  switch (reason) {
+    case 'ambiguous_identity': return 'Ambiguous match';
+    case 'unknown_card': return 'Unknown card';
+    case 'manual_flagged': return 'Flagged for review';
+    default: return reason;
+  }
+}
+
+function applyReviewCount(count: number): void {
+  reviewCountEl.textContent = String(count);
+  scanReviewCountEl.textContent = String(count);
+  if (count > 0) {
+    reviewCountEl.classList.add('has-items');
+    scanReviewCountEl.classList.add('has-items');
+  } else {
+    reviewCountEl.classList.remove('has-items');
+    scanReviewCountEl.classList.remove('has-items');
+  }
+}
+
+// ── Catalogue ─────────────────────────────────────────────────────────────────
 
 function renderRow(card: CardForRenderer): HTMLTableRowElement {
   const tr = document.createElement('tr');
@@ -160,7 +474,7 @@ async function refresh(): Promise<void> {
   renderCards(res.cards);
 }
 
-// --- Autocomplete ---
+// ── Autocomplete ──────────────────────────────────────────────────────────────
 
 function closeAutocomplete(): void {
   autocompleteList.hidden = true;
@@ -282,7 +596,7 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-// --- Bootstrap / first-run wizard ---
+// ── Bootstrap / first-run wizard ──────────────────────────────────────────────
 
 function phaseLabel(phase: BootstrapPhase): string {
   switch (phase) {
@@ -312,7 +626,6 @@ function progressPercent(s: BootstrapStatusDto): number {
   }
   if (s.phase === 'downloading') {
     if (s.totalBytes && s.downloadedBytes > 0) {
-      // Reserve 0-80% for download, 80-100% for ingesting
       return Math.min(80, Math.round((s.downloadedBytes / s.totalBytes) * 80));
     }
     return 5;
@@ -402,7 +715,7 @@ window.mimir.onBootstrapProgress((status) => {
   applyScannerGate(status);
 });
 
-// --- Manage Sets page ---
+// ── Manage Sets page ──────────────────────────────────────────────────────────
 
 const setsBody = document.getElementById('sets-body') as HTMLTableSectionElement;
 const setsSummary = document.getElementById('sets-summary') as HTMLDivElement;
@@ -430,6 +743,7 @@ function setActivePage(page: string): void {
 
   if (leaving === 'scan' && page !== 'scan') {
     stopCamera();
+    closeSlideOut();
   }
 
   if (page === 'sets') {
@@ -437,7 +751,7 @@ function setActivePage(page: string): void {
   } else if (page === 'scan') {
     void enterScanPage();
   } else if (page === 'review') {
-    void refreshReviewPage();
+    void reviewPagePanel.loadAndRender();
   }
 }
 
@@ -537,7 +851,6 @@ function renderSetRow(set: SetWithStatusDto): HTMLTableRowElement {
       input2.disabled = false;
       return;
     }
-    // refresh in a moment; progress events will keep state fresh.
     setTimeout(() => { void refreshSets(); }, 80);
   });
   const slider = document.createElement('span');
@@ -587,11 +900,9 @@ async function refreshSets(): Promise<void> {
 
 window.mimir.onSetsProgress((event) => {
   setProgress.set(event.setCode, event);
-  // If the set finished, drop the live entry once a refresh confirms it.
   if (event.status === 'complete' || event.status === 'none' || event.status === 'error') {
     void refreshSets();
   } else {
-    // patch the single row in place to keep the UI responsive
     const row = setsBody.querySelector<HTMLTableRowElement>(`tr[data-set-code="${event.setCode}"]`);
     const set = setsCache.find((s) => s.code === event.setCode);
     if (row && set) {
@@ -599,6 +910,8 @@ window.mimir.onSetsProgress((event) => {
     }
   }
 });
+
+// ── Initialisation ────────────────────────────────────────────────────────────
 
 void (async () => {
   const status = await window.mimir.bootstrapStatus();
@@ -617,7 +930,7 @@ void (async () => {
   if (countRes.ok) applyReviewCount(countRes.count);
 })();
 
-// --- Scan page ---
+// ── Scan page ─────────────────────────────────────────────────────────────────
 
 const scanVideo = document.getElementById('scan-video') as HTMLVideoElement;
 const scanOverlay = document.getElementById('scan-overlay') as HTMLCanvasElement;
@@ -638,7 +951,6 @@ let detectorState: DetectorState = initState();
 let rafHandle: number | null = null;
 let lastFrameMs = 0;
 
-// Reusable off-screen canvas for frame sampling.
 const frameCanvas = document.createElement('canvas');
 const frameCtx = frameCanvas.getContext('2d')!;
 
@@ -900,267 +1212,67 @@ function applyScanQueueDepth(event: ScanQueueDepthDto): void {
 
 window.mimir.onScanQueueDepth(applyScanQueueDepth);
 
-// --- Review page ---
+// ── Global keyboard shortcuts ─────────────────────────────────────────────────
 
-let currentReviewItem: ReviewItemDto | null = null;
-let selectedCandidateIndex = -1;
-let reviewViewMode: 'gallery' | 'list' = 'gallery';
-
-function applyReviewCount(count: number): void {
-  reviewCountEl.textContent = String(count);
-  if (count > 0) {
-    reviewCountEl.classList.add('has-items');
-  } else {
-    reviewCountEl.classList.remove('has-items');
-  }
-}
-
-function reasonLabel(reason: string): string {
-  switch (reason) {
-    case 'ambiguous_identity': return 'Ambiguous match';
-    case 'unknown_card': return 'Unknown card';
-    case 'manual_flagged': return 'Flagged for review';
-    default: return reason;
-  }
-}
-
-function selectCandidate(index: number): void {
-  if (!currentReviewItem) return;
-  if (index < 0 || index >= currentReviewItem.candidates.length) return;
-  selectedCandidateIndex = index;
-  reviewBtnConfirm.disabled = false;
-
-  // Gallery: highlight
-  const cards = reviewGallery.querySelectorAll<HTMLDivElement>('.review-candidate');
-  cards.forEach((c, i) => c.classList.toggle('is-selected', i === index));
-
-  // List: highlight
-  const rows = reviewListBody.querySelectorAll<HTMLTableRowElement>('tr');
-  rows.forEach((r, i) => r.classList.toggle('is-selected', i === index));
-}
-
-function renderReviewGallery(item: ReviewItemDto): void {
-  reviewGallery.innerHTML = '';
-  item.candidates.forEach((candidate, i) => {
-    const div = document.createElement('div');
-    div.className = 'review-candidate';
-    if (i === selectedCandidateIndex) div.classList.add('is-selected');
-
-    const keyBadge = document.createElement('div');
-    keyBadge.className = 'review-candidate-key';
-    keyBadge.textContent = String(i + 1);
-    div.appendChild(keyBadge);
-
-    if (candidate.artCropPath) {
-      const img = document.createElement('img');
-      img.className = 'review-candidate-art';
-      img.src = `file://${candidate.artCropPath}`;
-      img.alt = candidate.name;
-      div.appendChild(img);
-    } else {
-      const placeholder = document.createElement('div');
-      placeholder.className = 'review-candidate-art-placeholder';
-      placeholder.textContent = 'No art';
-      div.appendChild(placeholder);
-    }
-
-    const body = document.createElement('div');
-    body.className = 'review-candidate-body';
-
-    const name = document.createElement('div');
-    name.className = 'review-candidate-name';
-    name.textContent = candidate.name;
-    body.appendChild(name);
-
-    const meta = document.createElement('div');
-    meta.className = 'review-candidate-meta';
-    meta.textContent = `${candidate.setCode.toUpperCase()} #${candidate.collectorNumber}`;
-    body.appendChild(meta);
-
-    div.appendChild(body);
-    div.addEventListener('click', () => selectCandidate(i));
-    reviewGallery.appendChild(div);
-  });
-}
-
-function renderReviewList(item: ReviewItemDto): void {
-  reviewListBody.innerHTML = '';
-  item.candidates.forEach((candidate, i) => {
-    const tr = document.createElement('tr');
-    if (i === selectedCandidateIndex) tr.classList.add('is-selected');
-
-    const tdKey = document.createElement('td');
-    tdKey.className = 'rl-key';
-    tdKey.textContent = String(i + 1);
-    tr.appendChild(tdKey);
-
-    const tdName = document.createElement('td');
-    tdName.textContent = candidate.name;
-    tr.appendChild(tdName);
-
-    const tdSet = document.createElement('td');
-    tdSet.className = 'rl-set';
-    tdSet.textContent = candidate.setCode.toUpperCase();
-    tr.appendChild(tdSet);
-
-    const tdCn = document.createElement('td');
-    tdCn.className = 'rl-cn';
-    tdCn.textContent = candidate.collectorNumber;
-    tr.appendChild(tdCn);
-
-    const tdDist = document.createElement('td');
-    tdDist.className = 'rl-dist';
-    tdDist.textContent = String(candidate.hammingDistance);
-    tr.appendChild(tdDist);
-
-    const tdPrice = document.createElement('td');
-    tdPrice.className = 'rl-price';
-    tdPrice.textContent = formatPrice(candidate.priceUsd);
-    tr.appendChild(tdPrice);
-
-    tr.addEventListener('click', () => selectCandidate(i));
-    reviewListBody.appendChild(tr);
-  });
-}
-
-function applyReviewViewMode(): void {
-  const isGallery = reviewViewMode === 'gallery';
-  reviewGallery.hidden = !isGallery;
-  reviewList.hidden = isGallery;
-  reviewToggleGallery.classList.toggle('is-active', isGallery);
-  reviewToggleList.classList.toggle('is-active', !isGallery);
-}
-
-function renderReviewItem(item: ReviewItemDto): void {
-  currentReviewItem = item;
-  selectedCandidateIndex = -1;
-  reviewBtnConfirm.disabled = true;
-
-  // Snapshot
-  if (item.thumbnailPath) {
-    reviewSnapshot.src = `file://${item.thumbnailPath}`;
-    reviewSnapshot.hidden = false;
-  } else {
-    reviewSnapshot.src = '';
-    reviewSnapshot.hidden = true;
-  }
-
-  // Reason badge
-  reviewReasonBadge.textContent = reasonLabel(item.reason);
-  reviewReasonBadge.className = `review-reason-badge reason-${item.reason}`;
-
-  // Meta
-  reviewItemMeta.textContent = `Captured ${new Date(item.capturedAt).toLocaleString()} · ${item.candidates.length} candidate(s)`;
-
-  renderReviewGallery(item);
-  renderReviewList(item);
-  applyReviewViewMode();
-
-  reviewEmpty.hidden = true;
-  reviewPanelContent.hidden = false;
-}
-
-function showReviewEmpty(): void {
-  currentReviewItem = null;
-  selectedCandidateIndex = -1;
-  reviewBtnConfirm.disabled = true;
-  reviewEmpty.hidden = false;
-  reviewPanelContent.hidden = true;
-}
-
-async function refreshReviewPage(): Promise<void> {
-  const countRes = await window.mimir.reviewCount();
-  if (countRes.ok) {
-    applyReviewCount(countRes.count);
-    reviewPendingLabel.textContent = countRes.count > 0
-      ? `${countRes.count} pending`
-      : 'No items pending';
-  }
-
-  const res = await window.mimir.reviewListPending();
-  if (!res.ok) {
-    showReviewEmpty();
-    return;
-  }
-  const item = res.items[0];
-  if (!item) {
-    showReviewEmpty();
-    return;
-  }
-  renderReviewItem(item);
-}
-
-reviewToggleGallery.addEventListener('click', () => {
-  reviewViewMode = 'gallery';
-  applyReviewViewMode();
-  if (currentReviewItem) renderReviewGallery(currentReviewItem);
-});
-
-reviewToggleList.addEventListener('click', () => {
-  reviewViewMode = 'list';
-  applyReviewViewMode();
-  if (currentReviewItem) renderReviewList(currentReviewItem);
-});
-
-reviewBtnConfirm.addEventListener('click', async () => {
-  if (!currentReviewItem || selectedCandidateIndex < 0) return;
-  const candidate = currentReviewItem.candidates[selectedCandidateIndex];
-  if (!candidate) return;
-  reviewBtnConfirm.disabled = true;
-  const res = await window.mimir.reviewConfirm({ reviewId: currentReviewItem.id, scryfallId: candidate.scryfallId });
-  if (res.ok) {
-    await refreshReviewPage();
-    await refresh();
-  } else {
-    reviewBtnConfirm.disabled = false;
-  }
-});
-
-reviewBtnSkip.addEventListener('click', async () => {
-  if (!currentReviewItem) return;
-  await window.mimir.reviewSkip({ reviewId: currentReviewItem.id });
-  await refreshReviewPage();
-});
-
-reviewBtnDismiss.addEventListener('click', async () => {
-  if (!currentReviewItem) return;
-  await window.mimir.reviewDismiss({ reviewId: currentReviewItem.id });
-  await refreshReviewPage();
-});
-
-// Keyboard shortcuts on review page
 document.addEventListener('keydown', (e) => {
-  if (currentPage !== 'review') return;
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+  // Scan page: R toggles the slide-out panel
+  if (currentPage === 'scan' && (e.key === 'r' || e.key === 'R')) {
+    e.preventDefault();
+    toggleSlideOut();
+    return;
+  }
+
+  // Escape closes the slide-out without toggling
+  if (currentPage === 'scan' && e.key === 'Escape' && !reviewPanelEl.hidden) {
+    e.preventDefault();
+    closeSlideOut();
+    return;
+  }
+
+  // Review-panel keyboard shortcuts route to whichever panel is active
+  const activePanel =
+    currentPage === 'review'
+      ? reviewPagePanel
+      : currentPage === 'scan' && !reviewPanelEl.hidden
+        ? slideOutPanel
+        : null;
+
+  if (!activePanel) return;
 
   const digit = parseInt(e.key, 10);
   if (!isNaN(digit) && digit >= 1 && digit <= 9) {
     e.preventDefault();
-    selectCandidate(digit - 1);
+    activePanel.selectCandidate(digit - 1);
     return;
   }
 
   if (e.code === 'Space') {
     e.preventDefault();
-    if (!reviewBtnConfirm.disabled) reviewBtnConfirm.click();
+    if (!activePanel.btnConfirm.disabled) activePanel.btnConfirm.click();
     return;
   }
 
   if (e.key === 's' || e.key === 'S') {
     e.preventDefault();
-    reviewBtnSkip.click();
+    activePanel.btnSkip.click();
     return;
   }
 
   if (e.key === 'd' || e.key === 'D') {
     e.preventDefault();
-    reviewBtnDismiss.click();
+    activePanel.btnDismiss.click();
   }
 });
+
+// ── Review pending updates ────────────────────────────────────────────────────
 
 window.mimir.onReviewPendingUpdate((event: ReviewCountDto) => {
   applyReviewCount(event.count);
   if (currentPage === 'review') {
-    void refreshReviewPage();
+    void reviewPagePanel.loadAndRender();
+  } else if (currentPage === 'scan' && !reviewPanelEl.hidden) {
+    void slideOutPanel.loadAndRender();
   }
 });
