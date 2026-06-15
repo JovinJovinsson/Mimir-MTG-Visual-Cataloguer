@@ -1086,6 +1086,58 @@ async function refreshCollections(): Promise<void> {
   populatePresetCollectionDropdown(collectionsCache);
 }
 
+// ── Export dialog ─────────────────────────────────────────────────────────────
+
+const catalogueExportBtn = document.getElementById('catalogue-export-btn') as HTMLButtonElement;
+const exportDialog = document.getElementById('export-dialog') as HTMLDivElement;
+const exportFormatSelect = document.getElementById('export-format') as HTMLSelectElement;
+const exportScopeSelect = document.getElementById('export-scope') as HTMLSelectElement;
+const exportConfirmBtn = document.getElementById('export-confirm-btn') as HTMLButtonElement;
+const exportCancelBtn = document.getElementById('export-cancel-btn') as HTMLButtonElement;
+const exportStatusEl = document.getElementById('export-status') as HTMLDivElement;
+
+catalogueExportBtn.addEventListener('click', () => {
+  exportStatusEl.hidden = true;
+  exportStatusEl.textContent = '';
+  exportConfirmBtn.disabled = false;
+  exportDialog.hidden = false;
+});
+
+exportCancelBtn.addEventListener('click', () => {
+  exportDialog.hidden = true;
+});
+
+exportDialog.addEventListener('click', (e) => {
+  if (e.target === exportDialog) exportDialog.hidden = true;
+});
+
+exportConfirmBtn.addEventListener('click', async () => {
+  exportConfirmBtn.disabled = true;
+  exportStatusEl.hidden = true;
+
+  const format = exportFormatSelect.value as 'moxfield' | 'deckbox' | 'manabox' | 'mimir-native';
+  const scope = exportScopeSelect.value as 'all' | 'collection';
+  const collectionId = scope === 'collection' && activeCollectionId !== 'all'
+    ? (activeCollectionId as number)
+    : undefined;
+
+  const res = await window.mimir.exportCsv({ format, scope, collectionId });
+  exportConfirmBtn.disabled = false;
+
+  if (!res.ok) {
+    exportStatusEl.textContent = `Export failed: ${res.error}`;
+    exportStatusEl.className = 'export-status export-status--error';
+    exportStatusEl.hidden = false;
+    return;
+  }
+
+  if (res.savedPath) {
+    exportDialog.hidden = true;
+    setStatus(`Exported to ${res.savedPath}`, 'ok');
+  }
+  // If savedPath is null, user cancelled the save dialog — keep export dialog open
+});
+
 // ── Autocomplete ──────────────────────────────────────────────────────────────
 
 function closeAutocomplete(): void {

@@ -3,6 +3,7 @@ import type { CardForRenderer, CollectionForRenderer, Condition, Foil, ScanForRe
 export type { ReviewItemDto };
 
 export const IPC_CHANNELS = {
+  exportCsv: 'catalogue:exportCsv',
   reviewConfirmFieldCorrections: 'review:confirmFieldCorrections',
   addCardById: 'catalogue:addCardById',
   addCardByName: 'catalogue:addCardByName',
@@ -35,6 +36,19 @@ export const IPC_CHANNELS = {
   reviewBulkConfirmSet: 'review:bulkConfirmSet',
   reviewPendingUpdate: 'review:pendingUpdate',
 } as const;
+
+export type ExportFormat = 'moxfield' | 'deckbox' | 'manabox' | 'mimir-native';
+export type ExportScope = 'all' | 'collection';
+
+export interface ExportCsvRequest {
+  format: ExportFormat;
+  scope: ExportScope;
+  collectionId?: number;
+}
+
+export type ExportCsvResponse =
+  | { ok: true; savedPath: string | null }
+  | { ok: false; error: string };
 
 export interface AddCardByIdRequest {
   scryfall_id: string;
@@ -282,6 +296,7 @@ export type ReviewConfirmFieldCorrectionsResponse =
   | { ok: false; error: string };
 
 export interface MimirApi {
+  exportCsv(req: ExportCsvRequest): Promise<ExportCsvResponse>;
   reviewConfirmFieldCorrections(req: ReviewConfirmFieldCorrectionsRequest): Promise<ReviewConfirmFieldCorrectionsResponse>;
   addCardById(req: AddCardByIdRequest): Promise<AddCardByIdResponse>;
   addCardByName(req: AddCardByNameRequest): Promise<AddCardByNameResponse>;

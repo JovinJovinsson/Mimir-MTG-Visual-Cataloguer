@@ -74,6 +74,36 @@
         </div>
       </div>
 
+      <!-- Export dialog -->
+      <div id="export-dialog" class="modal-overlay" hidden>
+        <div class="modal-box">
+          <h3 class="modal-title">Export catalogue</h3>
+          <div class="export-form">
+            <div class="export-field">
+              <label class="export-label" for="export-format">Format</label>
+              <select id="export-format" class="export-select">
+                <option value="moxfield">Moxfield</option>
+                <option value="deckbox">Deckbox</option>
+                <option value="manabox">ManaBox</option>
+                <option value="mimir-native">Mimir (native)</option>
+              </select>
+            </div>
+            <div class="export-field">
+              <label class="export-label" for="export-scope">Scope</label>
+              <select id="export-scope" class="export-select">
+                <option value="all">All cards</option>
+                <option value="collection">Current collection</option>
+              </select>
+            </div>
+          </div>
+          <div id="export-status" class="export-status" hidden></div>
+          <div class="modal-actions">
+            <button id="export-confirm-btn" class="btn btn--primary">Export…</button>
+            <button id="export-cancel-btn" class="btn btn--secondary">Cancel</button>
+          </div>
+        </div>
+      </div>
+
       <main id="main">
         <section id="page-catalogue" class="page" data-page="catalogue">
           <header class="main-header">
@@ -93,6 +123,7 @@
               </div>
               <button type="submit" disabled>Add</button>
             </form>
+            <button id="catalogue-export-btn" class="btn btn--secondary">Export…</button>
           </header>
           <div id="status" class="status" role="status" aria-live="polite"></div>
 

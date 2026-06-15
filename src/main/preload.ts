@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   IPC_CHANNELS,
+  type ExportCsvRequest,
+  type ExportCsvResponse,
   type AddCardByIdRequest,
   type AddCardByIdResponse,
   type AddCardByNameRequest,
@@ -53,6 +55,8 @@ import {
 } from '../shared/ipc.js';
 
 const api: MimirApi = {
+  exportCsv: (req: ExportCsvRequest): Promise<ExportCsvResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.exportCsv, req),
   reviewConfirmFieldCorrections: (req: ReviewConfirmFieldCorrectionsRequest): Promise<ReviewConfirmFieldCorrectionsResponse> =>
     ipcRenderer.invoke(IPC_CHANNELS.reviewConfirmFieldCorrections, req),
   addCardById: (req: AddCardByIdRequest): Promise<AddCardByIdResponse> =>

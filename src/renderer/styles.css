@@ -314,6 +314,60 @@ html, body {
   opacity: 0.85;
 }
 
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn--primary:hover {
+  opacity: 0.9;
+}
+
+/* Export dialog */
+.export-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.export-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.export-label {
+  font-size: 12px;
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+.export-select {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.export-status {
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+}
+
+.export-status--error {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 .scanner-row .gate-state {
   font-size: 10px;
   text-transform: uppercase;

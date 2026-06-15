@@ -65,6 +65,7 @@ export interface CardForRenderer {
   scryfall_id: string;
   name: string;
   set_code: string;
+  set_name: string;
   collector_number: string;
   collection_id: number;
   foil: Foil;
@@ -72,6 +73,8 @@ export interface CardForRenderer {
   language: string;
   quantity: number;
   price_usd: number | null;
+  notes: string | null;
+  first_seen_at: number;
   last_seen_at: number;
   needs_review: boolean;
   review_reasons: string | null;

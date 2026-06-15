@@ -1,8 +1,10 @@
-import { ipcMain, type WebContents } from 'electron';
+import { ipcMain, dialog, type WebContents } from 'electron';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   IPC_CHANNELS,
+  type ExportCsvRequest,
+  type ExportCsvResponse,
   type AddCardByIdRequest,
   type AddCardByIdResponse,
   type AddCardByNameRequest,
@@ -71,6 +73,7 @@ import type { ReviewQueueDb } from './review-queue-db.js';
 import { resolveReviewItem } from './review-resolver.js';
 import { planBulkReviewAction } from './bulk-review-planner.js';
 import { planMoveToCollection } from './move-to-collection-planner.js';
+import { toMoxfieldCsv, toDeckboxCsv, toManaBoxCsv, toMimirNativeCsv, type ExportCard } from './csv-export.js';
 
 export interface IpcDeps {
   catalogue: CatalogueDb;
@@ -87,6 +90,63 @@ export interface IpcDeps {
 
 export function registerIpcHandlers(deps: IpcDeps): void {
   const { catalogue, index, bootstrap, artCrops, scanDb, settingsDb, thumbnailsDir, processingQueue, reviewQueueDb, broadcastReviewCount } = deps;
+
+  ipcMain.handle(
+    IPC_CHANNELS.exportCsv,
+    async (_event, req: ExportCsvRequest): Promise<ExportCsvResponse> => {
+      try {
+        const allCards = catalogue.listCards();
+        const allCollections = catalogue.listCollections();
+        const colMap = new Map(allCollections.map((c) => [c.id, c.name]));
+
+        const scopedCards = req.scope === 'collection' && req.collectionId != null
+          ? allCards.filter((c) => c.collection_id === req.collectionId)
+          : allCards;
+
+        const exportCards: ExportCard[] = scopedCards.map((c) => ({
+          ...c,
+          collection_name: colMap.get(c.collection_id) ?? 'Unknown',
+        }));
+
+        let csv: string;
+        let defaultName: string;
+        const date = new Date().toISOString().slice(0, 10);
+
+        switch (req.format) {
+          case 'moxfield':
+            csv = toMoxfieldCsv(exportCards);
+            defaultName = `mimir-moxfield-${date}.csv`;
+            break;
+          case 'deckbox':
+            csv = toDeckboxCsv(exportCards);
+            defaultName = `mimir-deckbox-${date}.csv`;
+            break;
+          case 'manabox':
+            csv = toManaBoxCsv(exportCards);
+            defaultName = `mimir-manabox-${date}.csv`;
+            break;
+          default:
+            csv = toMimirNativeCsv(exportCards);
+            defaultName = `mimir-native-${date}.csv`;
+            break;
+        }
+
+        const result = await dialog.showSaveDialog({
+          defaultPath: defaultName,
+          filters: [{ name: 'CSV', extensions: ['csv'] }],
+        });
+
+        if (result.canceled || !result.filePath) {
+          return { ok: true, savedPath: null };
+        }
+
+        await writeFile(result.filePath, csv, 'utf8');
+        return { ok: true, savedPath: result.filePath };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
 
   ipcMain.handle(
     IPC_CHANNELS.addCardById,
