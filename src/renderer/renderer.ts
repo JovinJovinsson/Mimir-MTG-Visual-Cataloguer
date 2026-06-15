@@ -7,6 +7,7 @@ import type {
   AutocompleteHitDto,
   BootstrapPhase,
   BootstrapStatusDto,
+  ScanQueueDepthDto,
   SetDownloadStatus,
   SetProgressDto,
   SetWithStatusDto,
@@ -603,6 +604,10 @@ const scanRetryBtn = document.getElementById('scan-retry-btn') as HTMLButtonElem
 const scanPermissionPrompt = document.getElementById('scan-permission-prompt') as HTMLDivElement;
 const scanRequestPermissionBtn = document.getElementById('scan-request-permission-btn') as HTMLButtonElement;
 const scanRecentsStrip = document.getElementById('scan-recents-strip') as HTMLDivElement;
+const scanQueueBar = document.getElementById('scan-queue-bar') as HTMLDivElement;
+const scanQueueDepthEl = document.getElementById('scan-queue-depth') as HTMLSpanElement;
+const scanQueueEtaEl = document.getElementById('scan-queue-eta') as HTMLSpanElement;
+const scanQueueFill = document.getElementById('scan-queue-fill') as HTMLDivElement;
 
 let activeStream: MediaStream | null = null;
 let detectorState: DetectorState = initState();
@@ -850,3 +855,23 @@ scanRetryBtn.addEventListener('click', () => {
 scanRequestPermissionBtn.addEventListener('click', () => {
   void startCamera(undefined);
 });
+
+let queueHighWater = 0;
+
+function applyScanQueueDepth(event: ScanQueueDepthDto): void {
+  const { depth, etaMs } = event;
+  if (depth > queueHighWater) queueHighWater = depth;
+  if (depth === 0) {
+    scanQueueBar.hidden = true;
+    queueHighWater = 0;
+    scanQueueFill.style.width = '0%';
+    return;
+  }
+  scanQueueBar.hidden = false;
+  scanQueueDepthEl.textContent = String(depth);
+  scanQueueEtaEl.textContent = etaMs != null ? `~${Math.ceil(etaMs / 1000)}s` : '';
+  const pct = queueHighWater > 0 ? Math.round(((queueHighWater - depth) / queueHighWater) * 100) : 0;
+  scanQueueFill.style.width = `${pct}%`;
+}
+
+window.mimir.onScanQueueDepth(applyScanQueueDepth);

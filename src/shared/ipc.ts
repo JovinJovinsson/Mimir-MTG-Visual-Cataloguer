@@ -13,6 +13,7 @@ export const IPC_CHANNELS = {
   setsProgress: 'sets:progress',
   scansCapture: 'scans:capture',
   scansListRecent: 'scans:listRecent',
+  scanQueueDepth: 'scan:queueDepth',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
 } as const;
@@ -122,6 +123,11 @@ export type ListRecentScansResponse =
   | { ok: true; scans: ScanForRenderer[] }
   | { ok: false; error: string };
 
+export interface ScanQueueDepthDto {
+  depth: number;
+  etaMs: number | null;
+}
+
 export interface GetSettingRequest {
   key: string;
 }
@@ -152,6 +158,7 @@ export interface MimirApi {
   onSetsProgress(cb: (event: SetProgressDto) => void): () => void;
   scansCapture(req: CaptureRequest): Promise<CaptureResponse>;
   scansListRecent(limit?: number): Promise<ListRecentScansResponse>;
+  onScanQueueDepth(cb: (event: ScanQueueDepthDto) => void): () => void;
   settingsGet(req: GetSettingRequest): Promise<GetSettingResponse>;
   settingsSet(req: SetSettingRequest): Promise<SetSettingResponse>;
 }

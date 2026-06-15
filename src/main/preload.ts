@@ -16,6 +16,7 @@ import {
   type ListCardsResponse,
   type ListRecentScansResponse,
   type MimirApi,
+  type ScanQueueDepthDto,
   type SetProgressDto,
   type SetSettingRequest,
   type SetSettingResponse,
@@ -59,6 +60,13 @@ const api: MimirApi = {
     ipcRenderer.invoke(IPC_CHANNELS.scansCapture, req),
   scansListRecent: (limit?: number): Promise<ListRecentScansResponse> =>
     ipcRenderer.invoke(IPC_CHANNELS.scansListRecent, { limit }),
+  onScanQueueDepth: (cb: (event: ScanQueueDepthDto) => void) => {
+    const listener = (_event: unknown, e: ScanQueueDepthDto): void => cb(e);
+    ipcRenderer.on(IPC_CHANNELS.scanQueueDepth, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.scanQueueDepth, listener);
+    };
+  },
   settingsGet: (req: GetSettingRequest): Promise<GetSettingResponse> =>
     ipcRenderer.invoke(IPC_CHANNELS.settingsGet, req),
   settingsSet: (req: SetSettingRequest): Promise<SetSettingResponse> =>

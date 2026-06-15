@@ -115,6 +115,16 @@ export interface ScryfallCardCropRow {
   art_crop_path: string | null;
 }
 
+export interface HashedCard {
+  scryfall_id: string;
+  name: string;
+  set_code: string;
+  set_name: string;
+  collector_number: string;
+  price_usd: number | null;
+  phash: string;
+}
+
 export interface ScryfallIndexDb {
   raw: Database.Database;
   getIndexState(): IndexState;
@@ -124,6 +134,7 @@ export interface ScryfallIndexDb {
   getCardByScryfallId(id: string): ScryfallIndexCard | null;
   listSetsWithStatus(): ScryfallSetWithStatus[];
   listSetCropRows(setCode: string): ScryfallCardCropRow[];
+  getAllHashedCards(): HashedCard[];
   setSetDownloadStatus(
     setCode: string,
     status: SetDownloadStatus,
@@ -251,6 +262,12 @@ function wrap(db: Database.Database): ScryfallIndexDb {
     WHERE set_code = ?
   `);
 
+  const getAllHashedCardsStmt = db.prepare<[], HashedCard>(`
+    SELECT scryfall_id, name, set_code, set_name, collector_number, price_usd, phash
+    FROM scryfall_cards
+    WHERE phash IS NOT NULL
+  `);
+
   const updateSetStatusStmt = db.prepare(`
     UPDATE scryfall_sets
     SET download_status = @status, is_downloaded = @is_downloaded
@@ -325,6 +342,10 @@ function wrap(db: Database.Database): ScryfallIndexDb {
 
     listSetCropRows(setCode: string): ScryfallCardCropRow[] {
       return listSetCropRowsStmt.all(setCode);
+    },
+
+    getAllHashedCards(): HashedCard[] {
+      return getAllHashedCardsStmt.all();
     },
 
     setSetDownloadStatus(

@@ -20,10 +20,12 @@ import { ArtCropOrchestrator } from './art-crop-orchestrator.js';
 import {
   broadcastArtCropProgress,
   broadcastBootstrapProgress,
+  broadcastScanQueueDepth,
   registerIpcHandlers,
 } from './ipc.js';
 import { openScanDb } from './scan-db.js';
 import { openSettingsDb } from './settings-db.js';
+import { ProcessingQueue } from './processing-queue.js';
 
 let catalogue: CatalogueDb | null = null;
 let index: ScryfallIndexDb | null = null;
@@ -81,9 +83,17 @@ app.whenReady().then(() => {
     rateLimit: () => limiter.acquire(),
   });
 
-  registerIpcHandlers({ catalogue, index, bootstrap, artCrops, scanDb, settingsDb, thumbnailsDir });
+  const processingQueue = new ProcessingQueue({
+    decodeImage: decodeJpegWithNativeImage,
+    index,
+    scanDb,
+    catalogueDb: catalogue,
+  });
+
+  registerIpcHandlers({ catalogue, index, bootstrap, artCrops, scanDb, settingsDb, thumbnailsDir, processingQueue });
   broadcastBootstrapProgress(() => electronWebContents.getAllWebContents(), bootstrap);
   broadcastArtCropProgress(() => electronWebContents.getAllWebContents(), artCrops);
+  broadcastScanQueueDepth(() => electronWebContents.getAllWebContents(), processingQueue);
 
   createWindow();
 

@@ -17,6 +17,7 @@ import {
   type GetSettingResponse,
   type ListCardsResponse,
   type ListRecentScansResponse,
+  type ScanQueueDepthDto,
   type SetProgressDto,
   type SetSettingRequest,
   type SetSettingResponse,
@@ -38,6 +39,7 @@ import type { CardForRenderer, Foil } from '../shared/types.js';
 import type { ScanDb } from './scan-db.js';
 import type { SettingsDb } from './settings-db.js';
 import { buildScanRow } from './scan-row-builder.js';
+import type { ProcessingQueue, ScanQueueDepthEvent } from './processing-queue.js';
 
 export interface IpcDeps {
   catalogue: CatalogueDb;
@@ -47,10 +49,11 @@ export interface IpcDeps {
   scanDb: ScanDb;
   settingsDb: SettingsDb;
   thumbnailsDir: string;
+  processingQueue: ProcessingQueue;
 }
 
 export function registerIpcHandlers(deps: IpcDeps): void {
-  const { catalogue, index, bootstrap, artCrops, scanDb, settingsDb, thumbnailsDir } = deps;
+  const { catalogue, index, bootstrap, artCrops, scanDb, settingsDb, thumbnailsDir, processingQueue } = deps;
 
   ipcMain.handle(
     IPC_CHANNELS.addCardById,
@@ -186,6 +189,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
         await writeFile(thumbPath, buffer);
         const row = buildScanRow({ thumbnailPath: thumbPath, capturedAt });
         const id = scanDb.insertScan(row);
+        processingQueue.enqueue({ scanId: id, thumbnailPath: thumbPath, capturedAt });
         return { ok: true, scan: { id, captured_at: capturedAt, thumbnail_path: thumbPath } };
       } catch (err) {
         return { ok: false, error: errorMessage(err) };
@@ -251,6 +255,20 @@ export function broadcastArtCropProgress(
     for (const wc of webContentsList()) {
       if (!wc.isDestroyed()) {
         wc.send(IPC_CHANNELS.setsProgress, dto);
+      }
+    }
+  });
+}
+
+export function broadcastScanQueueDepth(
+  webContentsList: () => WebContents[],
+  processingQueue: ProcessingQueue,
+): void {
+  processingQueue.on('depth', (event: ScanQueueDepthEvent) => {
+    const dto: ScanQueueDepthDto = { depth: event.depth, etaMs: event.etaMs };
+    for (const wc of webContentsList()) {
+      if (!wc.isDestroyed()) {
+        wc.send(IPC_CHANNELS.scanQueueDepth, dto);
       }
     }
   });

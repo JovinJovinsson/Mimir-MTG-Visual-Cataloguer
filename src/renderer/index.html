@@ -105,6 +105,16 @@
             </div>
           </div>
 
+          <div id="scan-queue-bar" class="scan-queue-bar" hidden>
+            <div class="scan-queue-bar-text">
+              <span>Processing</span>
+              <span id="scan-queue-depth" class="scan-queue-depth">0</span>
+              <span>in queue</span>
+              <span id="scan-queue-eta" class="muted scan-queue-eta"></span>
+            </div>
+            <div class="progress-bar"><div class="progress-bar-fill scan-queue-fill" id="scan-queue-fill"></div></div>
+          </div>
+
           <div class="scan-recents">
             <h2 class="scan-recents-label">Recent captures</h2>
             <div id="scan-recents-strip" class="scan-recents-strip">
