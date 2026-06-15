@@ -7,13 +7,16 @@ const KERNEL_5 = [1, 4, 6, 4, 1, 4, 16, 24, 16, 4, 6, 24, 36, 24, 6, 4, 16, 24, 
 
 function blur5(src: Uint8Array, w: number, h: number): Uint8Array {
   const dst = new Uint8Array(w * h);
-  for (let y = 2; y < h - 2; y++) {
-    for (let x = 2; x < w - 2; x++) {
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
       let sum = 0;
       for (let ky = -2; ky <= 2; ky++) {
         for (let kx = -2; kx <= 2; kx++) {
-          // Both array accesses are in-bounds by construction
-          sum += src[(y + ky) * w + (x + kx)]! * KERNEL_5[(ky + 2) * 5 + (kx + 2)]!;
+          // Clamp-to-border padding: avoids the artificial gradient at image edges
+          // that would otherwise make the frame border look like a "card".
+          const sy = Math.max(0, Math.min(h - 1, y + ky));
+          const sx = Math.max(0, Math.min(w - 1, x + kx));
+          sum += src[sy * w + sx]! * KERNEL_5[(ky + 2) * 5 + (kx + 2)]!;
         }
       }
       dst[y * w + x] = sum / 256;
@@ -212,18 +215,20 @@ export function detectCard(
 
   const blurred = blur5(gray, sw, sh);
   const edges = sobel(blurred, sw, sh);
-  // Higher threshold: only strong edges (card borders) fire.
-  // 45 eliminates most background gradients without losing card outlines.
-  const binary = threshold(edges, sw * sh, 45);
+  // Threshold 35: strong enough to skip most background noise, low enough
+  // to catch card borders under varied lighting.
+  const binary = threshold(edges, sw * sh, 35);
   const dilated = dilate3(binary, sw, sh);
 
   const frameArea = sw * sh;
-  // Card must occupy 4–75% of the (half-res) frame area to be plausible.
-  const MIN_AREA = frameArea * 0.04;
-  const MAX_AREA = frameArea * 0.75;
-  // Minimum edge-pixel count per component: a card border at this scale
-  // needs at least ~300 edge pixels to form a detectable closed rectangle.
-  const MIN_COMPONENT = 300;
+  // Card must occupy 3–80% of the (half-res) frame area.
+  // A card at arm's length covers ~12% at 640×480; at 50 cm ~4%.
+  const MIN_AREA = frameArea * 0.03;
+  const MAX_AREA = frameArea * 0.80;
+  // At half-res, a card's border perimeter is ~150–350 px depending on distance;
+  // ~50% of those are edge pixels → expect 75–175 px per component.
+  // Use 80 as the floor so very-far cards still pass.
+  const MIN_COMPONENT = 80;
 
   const visited = new Uint8Array(sw * sh);
   let bestQuad: Quad | null = null;
