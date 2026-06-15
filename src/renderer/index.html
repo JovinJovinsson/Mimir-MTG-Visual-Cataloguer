@@ -414,6 +414,7 @@
           <header class="main-header">
             <h1>Manage Sets</h1>
             <div class="sets-summary" id="sets-summary">Loading sets…</div>
+            <button id="scryfall-refresh-btn" class="btn btn--secondary" title="Check for and apply Scryfall card data updates">Refresh card database</button>
           </header>
           <p class="sets-blurb">
             Toggle a set on to download its art crops and compute pHashes locally. These power
@@ -512,6 +513,15 @@
           </div>
         </div>
       </aside>
+    </div>
+
+    <!-- Non-blocking Scryfall update notification -->
+    <div id="scryfall-update-banner" class="scryfall-update-banner" hidden role="status" aria-live="polite">
+      <span class="scryfall-update-text">Scryfall has new card data available.</span>
+      <div class="scryfall-update-actions">
+        <button id="scryfall-update-refresh-btn" class="scryfall-update-btn scryfall-update-btn--primary">Refresh now</button>
+        <button id="scryfall-update-later-btn" class="scryfall-update-btn scryfall-update-btn--secondary">Later</button>
+      </div>
     </div>
 
     <div id="wizard-overlay" class="wizard-overlay" hidden>

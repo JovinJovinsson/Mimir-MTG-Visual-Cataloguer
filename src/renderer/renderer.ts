@@ -20,6 +20,7 @@ import type {
   SetDownloadStatus,
   SetProgressDto,
   SetWithStatusDto,
+  ScryfallUpdateAvailableDto,
 } from '../shared/ipc.js';
 
 // ── ReviewPanelController ─────────────────────────────────────────────────────
@@ -2062,4 +2063,36 @@ window.mimir.onReviewPendingUpdate((event: ReviewCountDto) => {
   } else if (currentPage === 'scan' && !reviewPanelEl.hidden) {
     void slideOutPanel.loadAndRender();
   }
+});
+
+// ── Scryfall update notification ──────────────────────────────────────────────
+
+const scryfallUpdateBanner = document.getElementById('scryfall-update-banner') as HTMLDivElement;
+const scryfallUpdateRefreshBtn = document.getElementById('scryfall-update-refresh-btn') as HTMLButtonElement;
+const scryfallUpdateLaterBtn = document.getElementById('scryfall-update-later-btn') as HTMLButtonElement;
+const scryfallRefreshBtn = document.getElementById('scryfall-refresh-btn') as HTMLButtonElement;
+
+function showScryfallUpdateBanner(): void {
+  scryfallUpdateBanner.hidden = false;
+}
+
+function hideScryfallUpdateBanner(): void {
+  scryfallUpdateBanner.hidden = true;
+}
+
+async function triggerScryfallRefresh(): Promise<void> {
+  hideScryfallUpdateBanner();
+  const res = await window.mimir.scryfallRefresh();
+  if (!res.ok) {
+    console.error('[scryfall-update] refresh failed:', res.error);
+  }
+}
+
+scryfallUpdateRefreshBtn.addEventListener('click', () => { void triggerScryfallRefresh(); });
+scryfallUpdateLaterBtn.addEventListener('click', hideScryfallUpdateBanner);
+
+scryfallRefreshBtn.addEventListener('click', () => { void triggerScryfallRefresh(); });
+
+window.mimir.onScryfallUpdateAvailable((_event: ScryfallUpdateAvailableDto) => {
+  showScryfallUpdateBanner();
 });

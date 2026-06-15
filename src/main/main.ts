@@ -21,9 +21,11 @@ import {
   broadcastArtCropProgress,
   broadcastBootstrapProgress,
   broadcastScanQueueDepth,
+  broadcastScryfallUpdateAvailable,
   makeBroadcastReviewCount,
   registerIpcHandlers,
 } from './ipc.js';
+import { checkNeedsRefresh } from './scryfall-update-checker.js';
 import { openScanDb } from './scan-db.js';
 import { openSettingsDb } from './settings-db.js';
 import { ProcessingQueue } from './processing-queue.js';
@@ -106,6 +108,25 @@ app.whenReady().then(() => {
   broadcastScanQueueDepth(() => electronWebContents.getAllWebContents(), processingQueue);
 
   createWindow();
+
+  // After window is ready, check for Scryfall updates silently.
+  // Failure is intentionally swallowed — the app must still work offline.
+  void checkScryfallUpdate();
+
+  async function checkScryfallUpdate(): Promise<void> {
+    try {
+      const manifest = await fetchBulkDataManifest('default_cards');
+      const localState = index!.getIndexState();
+      if (checkNeedsRefresh(localState.bulkDataLastFetchedAt, manifest.updated_at) === 'needs-refresh') {
+        broadcastScryfallUpdateAvailable(
+          () => electronWebContents.getAllWebContents(),
+          { remoteUpdatedAt: manifest.updated_at },
+        );
+      }
+    } catch {
+      // Network unavailable or Scryfall down — fail silently
+    }
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

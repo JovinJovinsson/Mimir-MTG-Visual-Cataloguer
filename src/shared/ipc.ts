@@ -35,6 +35,9 @@ export const IPC_CHANNELS = {
   reviewBulkConfirmFoil: 'review:bulkConfirmFoil',
   reviewBulkConfirmSet: 'review:bulkConfirmSet',
   reviewPendingUpdate: 'review:pendingUpdate',
+  scryfallCheckUpdate: 'scryfall:checkUpdate',
+  scryfallRefresh: 'scryfall:refresh',
+  scryfallUpdateAvailable: 'scryfall:updateAvailable',
 } as const;
 
 export type ExportFormat = 'moxfield' | 'deckbox' | 'manabox' | 'mimir-native';
@@ -295,6 +298,20 @@ export type ReviewConfirmFieldCorrectionsResponse =
   | { ok: true }
   | { ok: false; error: string };
 
+export type ScryfallUpdateCheckResult = 'needs-refresh' | 'current';
+
+export type ScryfallCheckUpdateResponse =
+  | { ok: true; result: ScryfallUpdateCheckResult; remoteUpdatedAt: string }
+  | { ok: false; error: string };
+
+export type ScryfallRefreshResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export interface ScryfallUpdateAvailableDto {
+  remoteUpdatedAt: string;
+}
+
 export interface MimirApi {
   exportCsv(req: ExportCsvRequest): Promise<ExportCsvResponse>;
   reviewConfirmFieldCorrections(req: ReviewConfirmFieldCorrectionsRequest): Promise<ReviewConfirmFieldCorrectionsResponse>;
@@ -328,6 +345,9 @@ export interface MimirApi {
   reviewBulkConfirmFoil(req: ReviewBulkConfirmFoilRequest): Promise<ReviewBulkConfirmFoilResponse>;
   reviewBulkConfirmSet(req: ReviewBulkConfirmSetRequest): Promise<ReviewBulkConfirmSetResponse>;
   onReviewPendingUpdate(cb: (event: ReviewCountDto) => void): () => void;
+  scryfallCheckUpdate(): Promise<ScryfallCheckUpdateResponse>;
+  scryfallRefresh(): Promise<ScryfallRefreshResponse>;
+  onScryfallUpdateAvailable(cb: (event: ScryfallUpdateAvailableDto) => void): () => void;
 }
 
 declare global {

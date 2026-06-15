@@ -126,6 +126,55 @@ export class BootstrapOrchestrator extends EventEmitter {
     }
   }
 
+  async forceStart(): Promise<void> {
+    if (this.running) return;
+    this.running = true;
+    this.error = null;
+    this.ingestedCards = 0;
+    this.totalCards = null;
+    this.totalBytes = null;
+    this.downloadedBytes = 0;
+
+    try {
+      this.setPhase('fetching-manifest');
+      const manifest = await this.deps.fetchManifest('default_cards');
+      this.totalBytes = manifest.size ?? null;
+
+      this.setPhase('downloading');
+      let lastEmitAt = 0;
+      const cards = await this.deps.fetchBulk(manifest.download_uri, (downloaded, total) => {
+        this.downloadedBytes = downloaded;
+        if (total != null) this.totalBytes = total;
+        if (downloaded - lastEmitAt >= PROGRESS_EMIT_INTERVAL_BYTES) {
+          lastEmitAt = downloaded;
+          this.emit('progress', this.status());
+        }
+      });
+      this.totalCards = cards.length;
+
+      this.setPhase('ingesting');
+      const batches = planBulkIngest(cards, { batchSize: this.deps.batchSize ?? 1000 });
+      for (const batch of batches) {
+        this.deps.index.ingestBatches([batch]);
+        this.ingestedCards += batch.cards.length;
+        this.emit('progress', this.status());
+      }
+      this.deps.index.markBulkFetched(this.now());
+
+      this.setPhase('done');
+    } catch (err) {
+      if (err instanceof Error) {
+        this.error = err.message || err.name || 'Refresh failed';
+      } else {
+        this.error = String(err);
+      }
+      console.error('[bootstrap] force refresh error:', err);
+      this.setPhase('error');
+    } finally {
+      this.running = false;
+    }
+  }
+
   private setPhase(p: BootstrapPhase): void {
     this.phase = p;
     this.emit('progress', this.status());

@@ -46,6 +46,9 @@ import {
   type ReviewSkipRequest,
   type ReviewSkipResponse,
   type ScanQueueDepthDto,
+  type ScryfallCheckUpdateResponse,
+  type ScryfallRefreshResponse,
+  type ScryfallUpdateAvailableDto,
   type SetProgressDto,
   type SetSettingRequest,
   type SetSettingResponse,
@@ -137,6 +140,17 @@ const api: MimirApi = {
     ipcRenderer.on(IPC_CHANNELS.reviewPendingUpdate, listener);
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.reviewPendingUpdate, listener);
+    };
+  },
+  scryfallCheckUpdate: (): Promise<ScryfallCheckUpdateResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.scryfallCheckUpdate),
+  scryfallRefresh: (): Promise<ScryfallRefreshResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.scryfallRefresh),
+  onScryfallUpdateAvailable: (cb: (event: ScryfallUpdateAvailableDto) => void) => {
+    const listener = (_event: unknown, e: ScryfallUpdateAvailableDto): void => cb(e);
+    ipcRenderer.on(IPC_CHANNELS.scryfallUpdateAvailable, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.scryfallUpdateAvailable, listener);
     };
   },
 };

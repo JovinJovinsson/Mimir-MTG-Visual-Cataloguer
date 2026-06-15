@@ -47,6 +47,9 @@ import {
   type ReviewSkipRequest,
   type ReviewSkipResponse,
   type ScanQueueDepthDto,
+  type ScryfallCheckUpdateResponse,
+  type ScryfallRefreshResponse,
+  type ScryfallUpdateAvailableDto,
   type SetProgressDto,
   type SetSettingRequest,
   type SetSettingResponse,
@@ -55,6 +58,8 @@ import {
   type SetsToggleDownloadRequest,
   type SetsToggleDownloadResponse,
 } from '../shared/ipc.js';
+import { checkNeedsRefresh } from './scryfall-update-checker.js';
+import { fetchBulkDataManifest } from './scryfall-bulk.js';
 import type { CatalogueDb } from './database.js';
 import type { ScryfallIndexDb } from './scryfall-index.js';
 import type { BootstrapOrchestrator } from './bootstrap.js';
@@ -583,6 +588,32 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   );
 
   ipcMain.handle(
+    IPC_CHANNELS.scryfallCheckUpdate,
+    async (): Promise<ScryfallCheckUpdateResponse> => {
+      try {
+        const manifest = await fetchBulkDataManifest('default_cards');
+        const localState = index.getIndexState();
+        const result = checkNeedsRefresh(localState.bulkDataLastFetchedAt, manifest.updated_at);
+        return { ok: true, result, remoteUpdatedAt: manifest.updated_at };
+      } catch {
+        return { ok: false, error: 'Could not reach Scryfall' };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.scryfallRefresh,
+    async (): Promise<ScryfallRefreshResponse> => {
+      try {
+        bootstrap.forceStart().catch(() => {/* surfaced via progress events */});
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
     IPC_CHANNELS.reviewBulkConfirmSet,
     async (_event, req: ReviewBulkConfirmSetRequest): Promise<ReviewBulkConfirmSetResponse> => {
       try {
@@ -679,6 +710,17 @@ export function makeBroadcastReviewCount(
       }
     }
   };
+}
+
+export function broadcastScryfallUpdateAvailable(
+  webContentsList: () => WebContents[],
+  dto: ScryfallUpdateAvailableDto,
+): void {
+  for (const wc of webContentsList()) {
+    if (!wc.isDestroyed()) {
+      wc.send(IPC_CHANNELS.scryfallUpdateAvailable, dto);
+    }
+  }
 }
 
 function pickFoil(available: Foil[], requested?: Foil): Foil {
