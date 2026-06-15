@@ -1,4 +1,4 @@
-import type { CardForRenderer, CollectionForRenderer, Condition, Foil, ScanForRenderer, ReviewItemDto } from './types.js';
+import type { CardForRenderer, CollectionForRenderer, Condition, Foil, ScanForRenderer, ReviewItemDto, ScanModePreset } from './types.js';
 
 export type { ReviewItemDto };
 
@@ -171,6 +171,7 @@ export interface SetProgressDto {
 
 export interface CaptureRequest {
   dataUrl: string;
+  preset?: ScanModePreset;
 }
 
 export type CaptureResponse =

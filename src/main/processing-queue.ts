@@ -16,6 +16,7 @@ import {
   DEFAULT_THRESHOLDS,
 } from './field-inference.js';
 import { planCatalogueAdditionWithInferences, type FieldInferences } from './planner.js';
+import type { ScanModePreset } from '../shared/types.js';
 import type { ScanDb } from './scan-db.js';
 import type { CatalogueDb } from './database.js';
 import type { ReviewQueueDb } from './review-queue-db.js';
@@ -24,6 +25,7 @@ export interface QueueItem {
   scanId: number;
   thumbnailPath: string;
   capturedAt: number;
+  preset?: ScanModePreset;
 }
 
 export interface ScanQueueDepthEvent {
@@ -89,6 +91,7 @@ export class ProcessingQueue extends EventEmitter {
 
   private async processItem(item: QueueItem): Promise<void> {
     const { decodeImage, index, scanDb, catalogueDb, reviewQueueDb, onReviewCountChanged } = this.deps;
+    const preset = item.preset;
 
     let decoded: { rgba: Uint8Array; width: number; height: number };
     try {
@@ -187,16 +190,22 @@ export class ProcessingQueue extends EventEmitter {
       price: priceResult,
     };
 
-    const foilDecision = classifyInference(foilResult, DEFAULT_THRESHOLDS);
-    const langDecision = classifyInference(langResult, DEFAULT_THRESHOLDS);
-    const hasFlagged = foilDecision !== 'accept' || langDecision !== 'accept';
+    // Destination collection: use preset when explicitly set, otherwise fall back to inbox
+    const collectionId =
+      preset && preset.collectionId !== 'inbox'
+        ? preset.collectionId
+        : catalogueDb.inboxCollectionId();
 
-    const collectionId = catalogueDb.inboxCollectionId();
+    // Resolve effective field values for the dedup lookup (preset overrides inference)
+    const effectiveFoil = preset && preset.foil !== 'auto' ? preset.foil : foilResult.value;
+    const effectiveLang = preset && preset.language !== 'auto' ? preset.language : langResult.value;
+    const effectiveCondition = preset && preset.condition !== 'auto' ? preset.condition : 'NM';
+
     const existing = catalogueDb.findCardByScryfallId(
       best.scryfallId,
-      foilResult.value,
-      'NM',
-      langResult.value,
+      effectiveFoil,
+      effectiveCondition,
+      effectiveLang,
       collectionId,
     );
 
@@ -212,7 +221,11 @@ export class ProcessingQueue extends EventEmitter {
         now: item.capturedAt,
       },
       inferences,
+      DEFAULT_THRESHOLDS,
+      preset,
     );
+
+    const hasFlagged = addAction.kind === 'insert' && addAction.row.needs_review === 1;
 
     const cardId = catalogueDb.executeAction(addAction);
 
@@ -233,9 +246,10 @@ export class ProcessingQueue extends EventEmitter {
 
     // Insert a low_confidence_field review queue entry when fields are uncertain
     if (hasFlagged && addAction.kind === 'insert') {
-      const flaggedFields: string[] = [];
-      if (foilDecision !== 'accept') flaggedFields.push('foil');
-      if (langDecision !== 'accept') flaggedFields.push('language');
+      const reasons: string[] = JSON.parse(addAction.row.review_reasons ?? '[]') as string[];
+      const flaggedFields = reasons
+        .filter((r) => r.startsWith('low_confidence_field:'))
+        .map((r) => r.split(':')[1]);
 
       const candidate = {
         scryfallId: best.scryfallId,
@@ -249,8 +263,10 @@ export class ProcessingQueue extends EventEmitter {
       };
 
       const inferredValues: Record<string, string> = {};
-      if (foilDecision !== 'accept') inferredValues['foil'] = foilResult.value;
-      if (langDecision !== 'accept') inferredValues['language'] = langResult.value;
+      for (const field of flaggedFields) {
+        if (field === 'foil') inferredValues['foil'] = foilResult.value;
+        if (field === 'language') inferredValues['language'] = langResult.value;
+      }
 
       reviewQueueDb.insertReviewItem({
         scanId: item.scanId,

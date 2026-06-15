@@ -146,6 +146,52 @@
             <button id="scan-retry-btn" class="scan-retry-btn">Retry</button>
           </div>
 
+          <!-- Preset bar: declare batch context before scanning -->
+          <div class="scan-preset-bar" id="scan-preset-bar">
+            <div class="preset-group">
+              <label class="preset-label" for="preset-foil">Foil</label>
+              <select id="preset-foil" class="preset-select">
+                <option value="auto">Auto</option>
+                <option value="normal">Normal</option>
+                <option value="foil">Foil</option>
+                <option value="etched">Etched</option>
+              </select>
+            </div>
+            <div class="preset-group">
+              <label class="preset-label" for="preset-condition">Condition</label>
+              <select id="preset-condition" class="preset-select">
+                <option value="NM">NM</option>
+                <option value="LP">LP</option>
+                <option value="MP">MP</option>
+                <option value="HP">HP</option>
+                <option value="DMG">DMG</option>
+              </select>
+            </div>
+            <div class="preset-group">
+              <label class="preset-label" for="preset-language">Language</label>
+              <select id="preset-language" class="preset-select">
+                <option value="auto">Auto</option>
+                <option value="EN">EN</option>
+                <option value="DE">DE</option>
+                <option value="FR">FR</option>
+                <option value="IT">IT</option>
+                <option value="PT">PT</option>
+                <option value="ES">ES</option>
+                <option value="JA">JA</option>
+                <option value="KO">KO</option>
+                <option value="RU">RU</option>
+                <option value="CS">CS</option>
+                <option value="CT">CT</option>
+              </select>
+            </div>
+            <div class="preset-group preset-group--dest">
+              <label class="preset-label" for="preset-collection">Destination</label>
+              <select id="preset-collection" class="preset-select">
+                <option value="inbox">Inbox</option>
+              </select>
+            </div>
+          </div>
+
           <div class="scan-viewport-wrap">
             <video id="scan-video" class="scan-video" autoplay playsinline muted></video>
             <canvas id="scan-overlay" class="scan-overlay"></canvas>

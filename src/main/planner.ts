@@ -3,7 +3,9 @@ import type {
   CardsRow,
   CardsInsert,
   CatalogueAddAction,
+  Condition,
   Foil,
+  ScanModePreset,
 } from '../shared/types.js';
 import {
   type InferenceResult,
@@ -72,40 +74,56 @@ export function planCatalogueAddition(
 /**
  * Like planCatalogueAddition but resolves foil/language/price from per-field inference results
  * and annotates the resulting row with review_reasons and needs_review when fields are uncertain.
- * Condition is always 'NM' (manual-only field, never inferred).
+ * Condition defaults to 'NM' (manual-only field, never inferred) unless a preset overrides it.
+ * When a preset supplies an explicit (non-'auto') value for a field, that value is used directly
+ * and no review reason is accumulated for that field.
  */
 export function planCatalogueAdditionWithInferences(
   existing: CardsRow | null,
   baseInput: Omit<AddCardInput, 'foil' | 'language' | 'price_usd' | 'condition'>,
   inferences: FieldInferences,
   thresholds: InferenceThresholds = DEFAULT_THRESHOLDS,
+  preset?: ScanModePreset,
 ): CatalogueAddAction {
-  const foilDecision = classifyInference(inferences.foil, thresholds);
-  const langDecision = classifyInference(inferences.language, thresholds);
-
   const reviewReasons: string[] = [];
 
+  // Foil: preset wins if explicit; otherwise fall through to inference
   let foilValue: Foil;
-  if (foilDecision === 'accept') {
-    foilValue = inferences.foil.value;
-  } else if (foilDecision === 'accept-flag') {
-    foilValue = inferences.foil.value;
-    reviewReasons.push('low_confidence_field:foil');
+  if (preset && preset.foil !== 'auto') {
+    foilValue = preset.foil;
   } else {
-    foilValue = 'normal';
-    reviewReasons.push('low_confidence_field:foil');
+    const foilDecision = classifyInference(inferences.foil, thresholds);
+    if (foilDecision === 'accept') {
+      foilValue = inferences.foil.value;
+    } else if (foilDecision === 'accept-flag') {
+      foilValue = inferences.foil.value;
+      reviewReasons.push('low_confidence_field:foil');
+    } else {
+      foilValue = 'normal';
+      reviewReasons.push('low_confidence_field:foil');
+    }
   }
 
+  // Language: preset wins if explicit; otherwise fall through to inference
   let langValue: string;
-  if (langDecision === 'accept') {
-    langValue = inferences.language.value;
-  } else if (langDecision === 'accept-flag') {
-    langValue = inferences.language.value;
-    reviewReasons.push('low_confidence_field:language');
+  if (preset && preset.language !== 'auto') {
+    langValue = preset.language;
   } else {
-    langValue = 'EN';
-    reviewReasons.push('low_confidence_field:language');
+    const langDecision = classifyInference(inferences.language, thresholds);
+    if (langDecision === 'accept') {
+      langValue = inferences.language.value;
+    } else if (langDecision === 'accept-flag') {
+      langValue = inferences.language.value;
+      reviewReasons.push('low_confidence_field:language');
+    } else {
+      langValue = 'EN';
+      reviewReasons.push('low_confidence_field:language');
+    }
   }
+
+  // Condition: preset wins if explicit; otherwise default to 'NM'
+  const conditionValue: Condition =
+    preset && preset.condition !== 'auto' ? preset.condition : 'NM';
 
   // Price absence is not user-actionable; use inferred value regardless of confidence.
   const priceValue = inferences.price.value;
@@ -115,7 +133,7 @@ export function planCatalogueAdditionWithInferences(
     foil: foilValue,
     language: langValue,
     price_usd: priceValue,
-    condition: 'NM',
+    condition: conditionValue,
   };
 
   const baseAction = planCatalogueAddition(existing, fullInput);

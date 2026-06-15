@@ -296,7 +296,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
         await writeFile(thumbPath, buffer);
         const row = buildScanRow({ thumbnailPath: thumbPath, capturedAt });
         const id = scanDb.insertScan(row);
-        processingQueue.enqueue({ scanId: id, thumbnailPath: thumbPath, capturedAt });
+        processingQueue.enqueue({ scanId: id, thumbnailPath: thumbPath, capturedAt, preset: req.preset });
         return { ok: true, scan: { id, captured_at: capturedAt, thumbnail_path: thumbPath } };
       } catch (err) {
         return { ok: false, error: errorMessage(err) };

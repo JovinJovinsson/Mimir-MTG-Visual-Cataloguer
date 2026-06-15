@@ -1,6 +1,20 @@
 export type Foil = 'normal' | 'foil' | 'etched';
 export type Condition = 'NM' | 'LP' | 'MP' | 'HP' | 'DMG';
 
+export interface ScanModePreset {
+  foil: Foil | 'auto';
+  condition: Condition | 'auto';
+  language: string | 'auto';
+  collectionId: number | 'inbox';
+}
+
+export const DEFAULT_SCAN_PRESET: ScanModePreset = {
+  foil: 'auto',
+  condition: 'NM',
+  language: 'auto',
+  collectionId: 'inbox',
+};
+
 export interface AddCardInput {
   scryfall_id: string;
   name: string;

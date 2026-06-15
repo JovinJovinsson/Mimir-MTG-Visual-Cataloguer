@@ -1,4 +1,4 @@
-import type { CardForRenderer, CollectionForRenderer } from '../shared/types.js';
+import type { CardForRenderer, CollectionForRenderer, ScanModePreset } from '../shared/types.js';
 import { initState, step } from './card-detector.js';
 import type { DetectorState } from './card-detector.js';
 import { detectCard } from './frame-detector.js';
@@ -1083,6 +1083,7 @@ async function refreshCollections(): Promise<void> {
   if (!res.ok) return;
   collectionsCache = res.collections;
   renderCollectionsSidebar();
+  populatePresetCollectionDropdown(collectionsCache);
 }
 
 // ── Autocomplete ──────────────────────────────────────────────────────────────
@@ -1558,6 +1559,48 @@ const scanQueueDepthEl = document.getElementById('scan-queue-depth') as HTMLSpan
 const scanQueueEtaEl = document.getElementById('scan-queue-eta') as HTMLSpanElement;
 const scanQueueFill = document.getElementById('scan-queue-fill') as HTMLDivElement;
 
+// ── Scan preset bar ───────────────────────────────────────────────────────────
+
+const presetFoilSelect = document.getElementById('preset-foil') as HTMLSelectElement;
+const presetConditionSelect = document.getElementById('preset-condition') as HTMLSelectElement;
+const presetLanguageSelect = document.getElementById('preset-language') as HTMLSelectElement;
+const presetCollectionSelect = document.getElementById('preset-collection') as HTMLSelectElement;
+
+function currentPreset(): ScanModePreset {
+  const collVal = presetCollectionSelect.value;
+  return {
+    foil: presetFoilSelect.value as ScanModePreset['foil'],
+    condition: presetConditionSelect.value as ScanModePreset['condition'],
+    language: presetLanguageSelect.value as ScanModePreset['language'],
+    collectionId: collVal === 'inbox' ? 'inbox' : Number(collVal),
+  };
+}
+
+function updatePresetHighlights(): void {
+  presetFoilSelect.classList.toggle('is-active', presetFoilSelect.value !== 'auto');
+  presetLanguageSelect.classList.toggle('is-active', presetLanguageSelect.value !== 'auto');
+  presetConditionSelect.classList.toggle('is-active', presetConditionSelect.value !== 'NM');
+  presetCollectionSelect.classList.toggle('is-active', presetCollectionSelect.value !== 'inbox');
+}
+
+presetFoilSelect.addEventListener('change', updatePresetHighlights);
+presetConditionSelect.addEventListener('change', updatePresetHighlights);
+presetLanguageSelect.addEventListener('change', updatePresetHighlights);
+presetCollectionSelect.addEventListener('change', updatePresetHighlights);
+
+function populatePresetCollectionDropdown(collections: CollectionForRenderer[]): void {
+  const current = presetCollectionSelect.value;
+  presetCollectionSelect.innerHTML = '<option value="inbox">Inbox</option>';
+  for (const col of collections) {
+    if (col.is_wishlist) continue;
+    const opt = document.createElement('option');
+    opt.value = String(col.id);
+    opt.textContent = col.name;
+    if (String(col.id) === current) opt.selected = true;
+    presetCollectionSelect.appendChild(opt);
+  }
+}
+
 let activeStream: MediaStream | null = null;
 let detectorState: DetectorState = initState();
 let rafHandle: number | null = null;
@@ -1653,7 +1696,7 @@ async function fireCapture(
   const dataUrl = warpCanvas.toDataURL('image/jpeg', 0.85);
 
   try {
-    const res = await window.mimir.scansCapture({ dataUrl });
+    const res = await window.mimir.scansCapture({ dataUrl, preset: currentPreset() });
     if (res.ok) {
       await loadRecentScans();
     }
