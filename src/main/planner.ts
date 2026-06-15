@@ -2,7 +2,7 @@ import type {
   AddCardInput,
   CardsRow,
   CardsInsert,
-  CatalogueAction,
+  CatalogueAddAction,
 } from '../shared/types.js';
 
 function matchesDedupKey(row: CardsRow, input: AddCardInput): boolean {
@@ -18,7 +18,7 @@ function matchesDedupKey(row: CardsRow, input: AddCardInput): boolean {
 export function planCatalogueAddition(
   existing: CardsRow | null,
   input: AddCardInput,
-): CatalogueAction {
+): CatalogueAddAction {
   if (existing) {
     if (existing.scryfall_id !== input.scryfall_id) {
       throw new Error(

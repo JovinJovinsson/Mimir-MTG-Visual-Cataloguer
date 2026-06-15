@@ -1,4 +1,4 @@
-import type { CardForRenderer } from '../shared/types.js';
+import type { CardForRenderer, CollectionForRenderer } from '../shared/types.js';
 import { initState, step } from './card-detector.js';
 import type { DetectorState } from './card-detector.js';
 import { detectCard } from './frame-detector.js';
@@ -276,7 +276,6 @@ const input = document.getElementById('card-name-input') as HTMLInputElement;
 const submitButton = form.querySelector('button[type="submit"]') as HTMLButtonElement;
 const tableBody = document.getElementById('catalogue-body') as HTMLTableSectionElement;
 const statusEl = document.getElementById('status') as HTMLDivElement;
-const inboxCountEl = document.getElementById('inbox-count') as HTMLSpanElement;
 const scannerRow = document.getElementById('scanner-row') as HTMLLIElement;
 const scannerGate = document.getElementById('scanner-gate') as HTMLSpanElement;
 const autocompleteList = document.getElementById('autocomplete-list') as HTMLUListElement;
@@ -720,13 +719,27 @@ function renderEmpty(): void {
 function renderCards(cards: CardForRenderer[]): void {
   if (cards.length === 0) {
     renderEmpty();
-    inboxCountEl.textContent = '0';
     return;
   }
   tableBody.innerHTML = '';
-  for (const card of cards) tableBody.appendChild(renderRow(card));
-  const totalQty = cards.reduce((acc, c) => acc + c.quantity, 0);
-  inboxCountEl.textContent = String(totalQty);
+  for (const card of cards) {
+    const tr = renderRow(card);
+    tr.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showCardContextMenu(card.id, e.clientX, e.clientY);
+    });
+    tableBody.appendChild(tr);
+  }
+}
+
+let allCards: CardForRenderer[] = [];
+let activeCollectionId: number | 'all' = 'all';
+
+function applyCollectionFilter(): void {
+  const filtered = activeCollectionId === 'all'
+    ? allCards
+    : allCards.filter((c) => c.collection_id === activeCollectionId);
+  renderCards(filtered);
 }
 
 async function refresh(): Promise<void> {
@@ -735,7 +748,243 @@ async function refresh(): Promise<void> {
     setStatus(`Failed to load catalogue: ${res.error}`, 'error');
     return;
   }
-  renderCards(res.cards);
+  allCards = res.cards;
+  applyCollectionFilter();
+  refreshCollectionCounts();
+}
+
+// ── Collections sidebar ───────────────────────────────────────────────────────
+
+const collectionsList = document.getElementById('collections-list') as HTMLUListElement;
+const createCollectionBtn = document.getElementById('create-collection-btn') as HTMLButtonElement;
+
+const collectionContextMenu = document.getElementById('collection-context-menu') as HTMLDivElement;
+const ctxRenameCollectionBtn = document.getElementById('ctx-rename-collection') as HTMLButtonElement;
+const ctxDeleteCollectionBtn = document.getElementById('ctx-delete-collection') as HTMLButtonElement;
+
+const cardContextMenu = document.getElementById('card-context-menu') as HTMLDivElement;
+const ctxMoveToCollectionBtn = document.getElementById('ctx-move-to-collection') as HTMLButtonElement;
+
+const moveCollectionDialog = document.getElementById('move-collection-dialog') as HTMLDivElement;
+const moveCollectionList = document.getElementById('move-collection-list') as HTMLUListElement;
+const moveCollectionCancelBtn = document.getElementById('move-collection-cancel') as HTMLButtonElement;
+
+const deleteCollectionDialog = document.getElementById('delete-collection-dialog') as HTMLDivElement;
+const deleteCollectionMessage = document.getElementById('delete-collection-message') as HTMLParagraphElement;
+const deleteMoveCardsBtn = document.getElementById('delete-move-cards-btn') as HTMLButtonElement;
+const deleteCardsBtn = document.getElementById('delete-cards-btn') as HTMLButtonElement;
+const deleteCollectionCancelBtn = document.getElementById('delete-collection-cancel') as HTMLButtonElement;
+
+let collectionsCache: CollectionForRenderer[] = [];
+let ctxCollectionId: number | null = null;
+let ctxCardId: number | null = null;
+
+function hideAllContextMenus(): void {
+  collectionContextMenu.hidden = true;
+  cardContextMenu.hidden = true;
+}
+
+document.addEventListener('click', hideAllContextMenus);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideAllContextMenus(); });
+
+function positionMenu(menu: HTMLDivElement, x: number, y: number): void {
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+  menu.hidden = false;
+}
+
+function showCollectionContextMenu(id: number, x: number, y: number): void {
+  ctxCollectionId = id;
+  hideAllContextMenus();
+  positionMenu(collectionContextMenu, x, y);
+}
+
+function showCardContextMenu(cardId: number, x: number, y: number): void {
+  ctxCardId = cardId;
+  hideAllContextMenus();
+  positionMenu(cardContextMenu, x, y);
+}
+
+ctxRenameCollectionBtn.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  hideAllContextMenus();
+  if (ctxCollectionId == null) return;
+  const col = collectionsCache.find((c) => c.id === ctxCollectionId);
+  if (!col) return;
+  const newName = prompt('Rename collection:', col.name);
+  if (!newName || newName.trim() === col.name) return;
+  const res = await window.mimir.collectionsRename({ id: ctxCollectionId, name: newName.trim() });
+  if (!res.ok) { setStatus(res.error, 'error'); return; }
+  await refreshCollections();
+});
+
+ctxDeleteCollectionBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  hideAllContextMenus();
+  if (ctxCollectionId == null) return;
+  showDeleteCollectionDialog(ctxCollectionId);
+});
+
+ctxMoveToCollectionBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  hideAllContextMenus();
+  if (ctxCardId == null) return;
+  showMoveToCollectionDialog(ctxCardId);
+});
+
+function showMoveToCollectionDialog(cardId: number): void {
+  ctxCardId = cardId;
+  const card = allCards.find((c) => c.id === cardId);
+  moveCollectionList.innerHTML = '';
+  for (const col of collectionsCache) {
+    if (col.id === card?.collection_id) continue;
+    const li = document.createElement('li');
+    li.className = 'modal-list-item';
+    const btn = document.createElement('button');
+    btn.className = 'btn btn--secondary modal-list-btn';
+    btn.textContent = col.name + (col.is_wishlist ? ' ★' : '');
+    btn.addEventListener('click', async () => {
+      moveCollectionDialog.hidden = true;
+      const res = await window.mimir.cardMoveToCollection({ cardId, targetCollectionId: col.id });
+      if (!res.ok) { setStatus(res.error, 'error'); return; }
+      await refresh();
+      await refreshCollections();
+    });
+    li.appendChild(btn);
+    moveCollectionList.appendChild(li);
+  }
+  moveCollectionDialog.hidden = false;
+}
+
+moveCollectionCancelBtn.addEventListener('click', () => { moveCollectionDialog.hidden = true; });
+
+function showDeleteCollectionDialog(id: number): void {
+  ctxCollectionId = id;
+  const col = collectionsCache.find((c) => c.id === id);
+  if (!col) return;
+  const cardCount = allCards.filter((c) => c.collection_id === id).reduce((s, c) => s + c.quantity, 0);
+  if (cardCount === 0) {
+    deleteCollectionMessage.textContent = `Delete "${col.name}"? This cannot be undone.`;
+    deleteMoveCardsBtn.hidden = true;
+  } else {
+    deleteCollectionMessage.textContent = `"${col.name}" contains ${cardCount} card(s). What should happen to them?`;
+    deleteMoveCardsBtn.hidden = false;
+  }
+  deleteCollectionDialog.hidden = false;
+}
+
+deleteMoveCardsBtn.addEventListener('click', async () => {
+  deleteCollectionDialog.hidden = true;
+  if (ctxCollectionId == null) return;
+  const inboxId = collectionsCache.find((c) => !c.is_wishlist && c.sort_order === 0)?.id;
+  const res = await window.mimir.collectionsDelete({
+    id: ctxCollectionId,
+    mode: 'move-cards',
+    targetCollectionId: inboxId,
+  });
+  if (!res.ok) { setStatus(res.error, 'error'); return; }
+  if (activeCollectionId === ctxCollectionId) activeCollectionId = 'all';
+  await refresh();
+  await refreshCollections();
+});
+
+deleteCardsBtn.addEventListener('click', async () => {
+  deleteCollectionDialog.hidden = true;
+  if (ctxCollectionId == null) return;
+  const res = await window.mimir.collectionsDelete({ id: ctxCollectionId, mode: 'delete-cards' });
+  if (!res.ok) { setStatus(res.error, 'error'); return; }
+  if (activeCollectionId === ctxCollectionId) activeCollectionId = 'all';
+  await refresh();
+  await refreshCollections();
+});
+
+deleteCollectionCancelBtn.addEventListener('click', () => { deleteCollectionDialog.hidden = true; });
+
+createCollectionBtn.addEventListener('click', async () => {
+  const name = prompt('New collection name:');
+  if (!name?.trim()) return;
+  const res = await window.mimir.collectionsCreate({ name: name.trim() });
+  if (!res.ok) { setStatus(res.error, 'error'); return; }
+  await refreshCollections();
+});
+
+function refreshCollectionCounts(): void {
+  const items = collectionsList.querySelectorAll<HTMLLIElement>('[data-collection-id]');
+  for (const item of items) {
+    const idStr = item.dataset['collectionId'];
+    const countEl = item.querySelector<HTMLSpanElement>('.col-count');
+    if (!countEl) continue;
+    if (idStr === 'all') {
+      const ownedTotal = allCards.reduce((s, c) => s + c.quantity, 0);
+      countEl.textContent = String(ownedTotal);
+    } else {
+      const colId = Number(idStr);
+      const count = allCards.filter((c) => c.collection_id === colId).reduce((s, c) => s + c.quantity, 0);
+      countEl.textContent = String(count);
+    }
+  }
+}
+
+function renderCollectionItem(
+  label: string,
+  idStr: string | number,
+  count: number,
+  isWishlist: boolean,
+  isActive: boolean,
+): HTMLLIElement {
+  const li = document.createElement('li');
+  li.className = 'col-item' + (isActive ? ' is-active' : '') + (isWishlist ? ' col-item--wishlist' : '');
+  li.dataset['collectionId'] = String(idStr);
+
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'col-name';
+  nameSpan.textContent = isWishlist ? `★ ${label}` : label;
+
+  const countSpan = document.createElement('span');
+  countSpan.className = 'col-count count';
+  countSpan.textContent = String(count);
+
+  li.appendChild(nameSpan);
+  li.appendChild(countSpan);
+
+  li.addEventListener('click', () => {
+    activeCollectionId = idStr === 'all' ? 'all' : Number(idStr);
+    setActivePage('catalogue');
+    applyCollectionFilter();
+    renderCollectionsSidebar();
+  });
+
+  if (idStr !== 'all') {
+    li.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      showCollectionContextMenu(Number(idStr), e.clientX, e.clientY);
+    });
+  }
+
+  return li;
+}
+
+function renderCollectionsSidebar(): void {
+  collectionsList.innerHTML = '';
+
+  const allTotal = allCards.reduce((s, c) => s + c.quantity, 0);
+  collectionsList.appendChild(
+    renderCollectionItem('All', 'all', allTotal, false, activeCollectionId === 'all'),
+  );
+
+  for (const col of collectionsCache) {
+    const count = allCards.filter((c) => c.collection_id === col.id).reduce((s, c) => s + c.quantity, 0);
+    const isActive = activeCollectionId === col.id;
+    collectionsList.appendChild(renderCollectionItem(col.name, col.id, count, col.is_wishlist, isActive));
+  }
+}
+
+async function refreshCollections(): Promise<void> {
+  const res = await window.mimir.collectionsList();
+  if (!res.ok) return;
+  collectionsCache = res.collections;
+  renderCollectionsSidebar();
 }
 
 // ── Autocomplete ──────────────────────────────────────────────────────────────
@@ -985,7 +1234,7 @@ const setsBody = document.getElementById('sets-body') as HTMLTableSectionElement
 const setsSummary = document.getElementById('sets-summary') as HTMLDivElement;
 const setsCountBadge = document.getElementById('sets-count') as HTMLSpanElement;
 const navItems = Array.from(
-  document.querySelectorAll<HTMLLIElement>('#sidebar .nav-item'),
+  document.querySelectorAll<HTMLLIElement>('#sidebar .sidebar-nav-list .nav-item'),
 );
 const pages = Array.from(document.querySelectorAll<HTMLElement>('main .page'));
 
@@ -1188,6 +1437,7 @@ void (async () => {
   } else {
     applyStatusToBanner(status);
   }
+  await refreshCollections();
   await refresh();
   await refreshSets();
   const countRes = await window.mimir.reviewCount();

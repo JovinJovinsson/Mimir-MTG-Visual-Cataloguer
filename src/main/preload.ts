@@ -11,6 +11,15 @@ import {
   type BootstrapStatusDto,
   type CaptureRequest,
   type CaptureResponse,
+  type CardMoveToCollectionRequest,
+  type CardMoveToCollectionResponse,
+  type CollectionsCreateRequest,
+  type CollectionsCreateResponse,
+  type CollectionsDeleteRequest,
+  type CollectionsDeleteResponse,
+  type CollectionsListResponse,
+  type CollectionsRenameRequest,
+  type CollectionsRenameResponse,
   type GetSettingRequest,
   type GetSettingResponse,
   type ListCardsResponse,
@@ -50,6 +59,16 @@ const api: MimirApi = {
     ipcRenderer.invoke(IPC_CHANNELS.listCards),
   autocompleteByName: (query: string, limit?: number): Promise<AutocompleteResponse> =>
     ipcRenderer.invoke(IPC_CHANNELS.autocompleteByName, { query, limit }),
+  collectionsList: (): Promise<CollectionsListResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.collectionsList),
+  collectionsCreate: (req: CollectionsCreateRequest): Promise<CollectionsCreateResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.collectionsCreate, req),
+  collectionsRename: (req: CollectionsRenameRequest): Promise<CollectionsRenameResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.collectionsRename, req),
+  collectionsDelete: (req: CollectionsDeleteRequest): Promise<CollectionsDeleteResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.collectionsDelete, req),
+  cardMoveToCollection: (req: CardMoveToCollectionRequest): Promise<CardMoveToCollectionResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.cardMoveToCollection, req),
   bootstrapStatus: (): Promise<BootstrapStatusDto> =>
     ipcRenderer.invoke(IPC_CHANNELS.bootstrapStatus),
   bootstrapStart: (req: BootstrapStartRequest): Promise<BootstrapStartResponse> =>

@@ -1,4 +1,4 @@
-import type { CardForRenderer, Condition, Foil, ScanForRenderer, ReviewItemDto } from './types.js';
+import type { CardForRenderer, CollectionForRenderer, Condition, Foil, ScanForRenderer, ReviewItemDto } from './types.js';
 
 export type { ReviewItemDto };
 
@@ -7,6 +7,11 @@ export const IPC_CHANNELS = {
   addCardByName: 'catalogue:addCardByName',
   listCards: 'catalogue:listCards',
   autocompleteByName: 'catalogue:autocompleteByName',
+  collectionsList: 'collections:list',
+  collectionsCreate: 'collections:create',
+  collectionsRename: 'collections:rename',
+  collectionsDelete: 'collections:delete',
+  cardMoveToCollection: 'cards:moveToCollection',
   bootstrapStatus: 'bootstrap:status',
   bootstrapStart: 'bootstrap:start',
   bootstrapProgress: 'bootstrap:progress',
@@ -52,6 +57,46 @@ export type AddCardByNameResponse = AddCardByIdResponse;
 
 export type ListCardsResponse =
   | { ok: true; cards: CardForRenderer[] }
+  | { ok: false; error: string };
+
+export type CollectionsListResponse =
+  | { ok: true; collections: CollectionForRenderer[] }
+  | { ok: false; error: string };
+
+export interface CollectionsCreateRequest {
+  name: string;
+}
+
+export type CollectionsCreateResponse =
+  | { ok: true; id: number }
+  | { ok: false; error: string };
+
+export interface CollectionsRenameRequest {
+  id: number;
+  name: string;
+}
+
+export type CollectionsRenameResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export interface CollectionsDeleteRequest {
+  id: number;
+  mode: 'delete-cards' | 'move-cards';
+  targetCollectionId?: number;
+}
+
+export type CollectionsDeleteResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export interface CardMoveToCollectionRequest {
+  cardId: number;
+  targetCollectionId: number;
+}
+
+export type CardMoveToCollectionResponse =
+  | { ok: true }
   | { ok: false; error: string };
 
 export interface AutocompleteHitDto {
@@ -228,6 +273,11 @@ export interface MimirApi {
   addCardByName(req: AddCardByNameRequest): Promise<AddCardByNameResponse>;
   listCards(): Promise<ListCardsResponse>;
   autocompleteByName(query: string, limit?: number): Promise<AutocompleteResponse>;
+  collectionsList(): Promise<CollectionsListResponse>;
+  collectionsCreate(req: CollectionsCreateRequest): Promise<CollectionsCreateResponse>;
+  collectionsRename(req: CollectionsRenameRequest): Promise<CollectionsRenameResponse>;
+  collectionsDelete(req: CollectionsDeleteRequest): Promise<CollectionsDeleteResponse>;
+  cardMoveToCollection(req: CardMoveToCollectionRequest): Promise<CardMoveToCollectionResponse>;
   bootstrapStatus(): Promise<BootstrapStatusDto>;
   bootstrapStart(req: BootstrapStartRequest): Promise<BootstrapStartResponse>;
   onBootstrapProgress(cb: (status: BootstrapStatusDto) => void): () => void;

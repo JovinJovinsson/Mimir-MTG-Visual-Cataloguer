@@ -1,6 +1,7 @@
 import type { Migration } from './migrations.js';
 
 export const INBOX_COLLECTION_NAME = 'Inbox';
+export const WISHLIST_COLLECTION_NAME = 'Wishlist';
 
 export const catalogueMigrations: Migration[] = [
   {
@@ -78,12 +79,15 @@ export const catalogueMigrations: Migration[] = [
   },
 ];
 
-export function seedInboxCollection(db: import('better-sqlite3').Database): void {
-  const existing = db
-    .prepare<[string], { id: number }>(`SELECT id FROM collections WHERE name = ?`)
-    .get(INBOX_COLLECTION_NAME);
-  if (existing) return;
-  db.prepare(
-    `INSERT INTO collections (name, sort_order, created_at) VALUES (?, 0, ?)`,
-  ).run(INBOX_COLLECTION_NAME, Date.now());
+export function seedDefaultCollections(db: import('better-sqlite3').Database): void {
+  const check = db.prepare<[string], { id: number }>(`SELECT id FROM collections WHERE name = ?`);
+
+  if (!check.get(INBOX_COLLECTION_NAME)) {
+    db.prepare(`INSERT INTO collections (name, is_wishlist, sort_order, created_at) VALUES (?, 0, 0, ?)`)
+      .run(INBOX_COLLECTION_NAME, Date.now());
+  }
+  if (!check.get(WISHLIST_COLLECTION_NAME)) {
+    db.prepare(`INSERT INTO collections (name, is_wishlist, sort_order, created_at) VALUES (?, 1, 1, ?)`)
+      .run(WISHLIST_COLLECTION_NAME, Date.now());
+  }
 }

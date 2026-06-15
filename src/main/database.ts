@@ -2,13 +2,15 @@ import Database from 'better-sqlite3';
 import { existsSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { runMigrations } from './migrations.js';
-import { catalogueMigrations, seedInboxCollection, INBOX_COLLECTION_NAME } from './schema.js';
+import { catalogueMigrations, seedDefaultCollections, INBOX_COLLECTION_NAME } from './schema.js';
 import { planCatalogueAddition } from './planner.js';
 import type {
   AddCardInput,
   CardForRenderer,
   CardsRow,
   CatalogueAction,
+  CollectionForRenderer,
+  CollectionRow,
 } from '../shared/types.js';
 
 export interface CatalogueDb {
@@ -17,7 +19,13 @@ export interface CatalogueDb {
   addCard(input: Omit<AddCardInput, 'collection_id' | 'now'> & { collection_id?: number; now?: number }): { id: number; created: boolean };
   executeAction(action: CatalogueAction): number;
   findCardByScryfallId(scryfallId: string, foil: string, condition: string, language: string, collectionId: number): CardsRow | null;
+  findCardById(cardId: number): CardsRow | null;
+  findCardInCollection(scryfallId: string, foil: string, condition: string, language: string, collectionId: number): CardsRow | null;
   listCards(): CardForRenderer[];
+  listCollections(): CollectionForRenderer[];
+  createCollection(name: string): number;
+  renameCollection(id: number, name: string): void;
+  deleteCollection(id: number, mode: 'delete-cards' | 'move-cards', targetCollectionId?: number): void;
   close(): void;
 }
 
@@ -30,7 +38,7 @@ export function openCatalogueDb(dbPath: string): CatalogueDb {
   db.pragma('foreign_keys = ON');
 
   runMigrations(db, catalogueMigrations);
-  seedInboxCollection(db);
+  seedDefaultCollections(db);
 
   return wrap(db);
 }
@@ -70,12 +78,53 @@ function wrap(db: Database.Database): CatalogueDb {
     `UPDATE cards SET quantity = ?, last_seen_at = ? WHERE id = ?`,
   );
 
+  const updateCardCollection = db.prepare(
+    `UPDATE cards SET collection_id = ? WHERE id = ?`,
+  );
+
+  const deleteCard = db.prepare(
+    `DELETE FROM cards WHERE id = ?`,
+  );
+
   const listAll = db.prepare<[], CardsRow>(
     `SELECT * FROM cards ORDER BY last_seen_at DESC`,
   );
 
   const inboxIdStmt = db.prepare<[string], { id: number }>(
     `SELECT id FROM collections WHERE name = ?`,
+  );
+
+  const findById = db.prepare<[number], CardsRow>(
+    `SELECT * FROM cards WHERE id = ?`,
+  );
+
+  const listCollectionsStmt = db.prepare<[], CollectionRow & { count: number }>(`
+    SELECT c.id, c.name, c.is_wishlist, c.sort_order, c.created_at,
+           COALESCE(SUM(ca.quantity), 0) AS count
+    FROM collections c
+    LEFT JOIN cards ca ON ca.collection_id = c.id
+    GROUP BY c.id
+    ORDER BY c.sort_order ASC, c.created_at ASC
+  `);
+
+  const insertCollection = db.prepare(
+    `INSERT INTO collections (name, is_wishlist, sort_order, created_at) VALUES (?, 0, 999, ?)`,
+  );
+
+  const renameCollectionStmt = db.prepare(
+    `UPDATE collections SET name = ? WHERE id = ?`,
+  );
+
+  const deleteCollectionStmt = db.prepare(
+    `DELETE FROM collections WHERE id = ?`,
+  );
+
+  const moveCardsToCollection = db.prepare(
+    `UPDATE cards SET collection_id = ? WHERE collection_id = ?`,
+  );
+
+  const deleteCardsByCollection = db.prepare(
+    `DELETE FROM cards WHERE collection_id = ?`,
   );
 
   return {
@@ -113,15 +162,33 @@ function wrap(db: Database.Database): CatalogueDb {
     },
 
     executeAction(action: CatalogueAction): number {
-      if (action.kind === 'bump') {
-        bumpCard.run(action.newQuantity, action.lastSeenAt, action.cardId);
-        return action.cardId;
+      switch (action.kind) {
+        case 'bump':
+          bumpCard.run(action.newQuantity, action.lastSeenAt, action.cardId);
+          return action.cardId;
+        case 'update-collection':
+          updateCardCollection.run(action.collectionId, action.cardId);
+          return action.cardId;
+        case 'delete-card':
+          deleteCard.run(action.cardId);
+          return action.cardId;
+        default: {
+          const insertAction = action as Extract<CatalogueAction, { kind: 'insert' }>;
+          const info = insertCard.run(insertAction.row);
+          return Number(info.lastInsertRowid);
+        }
       }
-      const info = insertCard.run(action.row);
-      return Number(info.lastInsertRowid);
     },
 
     findCardByScryfallId(scryfallId: string, foil: string, condition: string, language: string, collectionId: number): CardsRow | null {
+      return findExisting.get({ scryfall_id: scryfallId, foil, condition, language, collection_id: collectionId }) ?? null;
+    },
+
+    findCardById(cardId: number): CardsRow | null {
+      return findById.get(cardId) ?? null;
+    },
+
+    findCardInCollection(scryfallId: string, foil: string, condition: string, language: string, collectionId: number): CardsRow | null {
       return findExisting.get({ scryfall_id: scryfallId, foil, condition, language, collection_id: collectionId }) ?? null;
     },
 
@@ -133,6 +200,7 @@ function wrap(db: Database.Database): CatalogueDb {
         name: r.name,
         set_code: r.set_code,
         collector_number: r.collector_number,
+        collection_id: r.collection_id,
         foil: r.foil,
         condition: r.condition,
         language: r.language,
@@ -141,6 +209,38 @@ function wrap(db: Database.Database): CatalogueDb {
         last_seen_at: r.last_seen_at,
         needs_review: r.needs_review === 1,
       }));
+    },
+
+    listCollections(): CollectionForRenderer[] {
+      const rows = listCollectionsStmt.all();
+      return rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        is_wishlist: r.is_wishlist === 1,
+        sort_order: r.sort_order,
+        count: r.count,
+      }));
+    },
+
+    createCollection(name: string): number {
+      const info = insertCollection.run(name, Date.now());
+      return Number(info.lastInsertRowid);
+    },
+
+    renameCollection(id: number, name: string): void {
+      renameCollectionStmt.run(name, id);
+    },
+
+    deleteCollection(id: number, mode: 'delete-cards' | 'move-cards', targetCollectionId?: number): void {
+      const tx = db.transaction(() => {
+        if (mode === 'move-cards' && targetCollectionId != null) {
+          moveCardsToCollection.run(targetCollectionId, id);
+        } else {
+          deleteCardsByCollection.run(id);
+        }
+        deleteCollectionStmt.run(id);
+      });
+      tx();
     },
 
     close() {

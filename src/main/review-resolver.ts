@@ -1,5 +1,5 @@
 import { planCatalogueAddition } from './planner.js';
-import type { CardsRow, CardsInsert, ReviewCandidate } from '../shared/types.js';
+import type { CatalogueAddAction, CardsRow, CardsInsert, ReviewCandidate } from '../shared/types.js';
 
 export type { ReviewCandidate };
 
@@ -15,8 +15,7 @@ export type UserResolution =
   | { kind: 'dismiss' };
 
 export type ReviewAction =
-  | { kind: 'insert'; row: CardsInsert }
-  | { kind: 'bump'; cardId: number; newQuantity: number; lastSeenAt: number }
+  | CatalogueAddAction
   | { kind: 'update-scan-card'; scanId: number; cardId: number | null }
   | { kind: 'resolve-review-queue'; reviewId: number; scryfallId: string }
   | { kind: 'skip-review-queue'; reviewId: number }

@@ -1,10 +1,9 @@
 import { planCatalogueAddition } from './planner.js';
-import type { CardsInsert, CardsRow } from '../shared/types.js';
+import type { CatalogueAddAction, CardsRow } from '../shared/types.js';
 import type { RecognitionResult } from './recognition-pipeline.js';
 
 export type RecognitionCatalogueAction =
-  | { kind: 'insert'; row: CardsInsert }
-  | { kind: 'bump'; cardId: number; newQuantity: number; lastSeenAt: number }
+  | CatalogueAddAction
   | { kind: 'skip'; reason: 'no-match' | 'error' };
 
 export function planRecognitionCatalogueAction(

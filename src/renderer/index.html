@@ -11,11 +11,18 @@
       <aside id="sidebar" aria-label="Navigation">
         <div class="sidebar-brand">Mimir</div>
         <nav>
-          <ul>
-            <li class="nav-item active" data-page="catalogue">
-              <span class="label">Inbox</span>
-              <span class="count" id="inbox-count">0</span>
-            </li>
+          <!-- Collections section -->
+          <div class="sidebar-section-header">
+            <span class="sidebar-section-label">Collections</span>
+            <button id="create-collection-btn" class="sidebar-action-btn" title="New collection" aria-label="New collection">+</button>
+          </div>
+          <ul id="collections-list" class="collections-list">
+            <!-- "All" pseudo-collection + dynamic collection items rendered here -->
+          </ul>
+
+          <!-- App nav section -->
+          <div class="sidebar-section-divider"></div>
+          <ul class="sidebar-nav-list">
             <li class="nav-item scanner-row" id="scanner-row" data-page="scan">
               <span class="label">Scan</span>
               <span class="gate-state" id="scanner-gate">locked</span>
@@ -31,6 +38,41 @@
           </ul>
         </nav>
       </aside>
+
+      <!-- Context menu for collection actions -->
+      <div id="collection-context-menu" class="context-menu" hidden>
+        <button class="context-menu-item" id="ctx-rename-collection">Rename</button>
+        <button class="context-menu-item context-menu-item--danger" id="ctx-delete-collection">Delete</button>
+      </div>
+
+      <!-- Context menu for card rows -->
+      <div id="card-context-menu" class="context-menu" hidden>
+        <button class="context-menu-item" id="ctx-move-to-collection">Move to collection…</button>
+      </div>
+
+      <!-- Move-to-collection picker -->
+      <div id="move-collection-dialog" class="modal-overlay" hidden>
+        <div class="modal-box">
+          <h3 class="modal-title">Move to collection</h3>
+          <ul id="move-collection-list" class="modal-list"></ul>
+          <div class="modal-actions">
+            <button id="move-collection-cancel" class="btn btn--secondary">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Delete collection dialog -->
+      <div id="delete-collection-dialog" class="modal-overlay" hidden>
+        <div class="modal-box">
+          <h3 class="modal-title">Delete collection</h3>
+          <p id="delete-collection-message" class="modal-message"></p>
+          <div class="modal-actions">
+            <button id="delete-move-cards-btn" class="btn btn--secondary" hidden>Move cards to Inbox</button>
+            <button id="delete-cards-btn" class="btn btn--danger">Delete cards too</button>
+            <button id="delete-collection-cancel" class="btn btn--secondary">Cancel</button>
+          </div>
+        </div>
+      </div>
 
       <main id="main">
         <section id="page-catalogue" class="page" data-page="catalogue">

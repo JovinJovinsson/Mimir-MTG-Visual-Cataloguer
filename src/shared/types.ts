@@ -37,9 +37,14 @@ export interface CardsRow {
 
 export type CardsInsert = Omit<CardsRow, 'id'>;
 
-export type CatalogueAction =
+export type CatalogueAddAction =
   | { kind: 'insert'; row: CardsInsert }
   | { kind: 'bump'; cardId: number; newQuantity: number; lastSeenAt: number };
+
+export type CatalogueAction =
+  | CatalogueAddAction
+  | { kind: 'update-collection'; cardId: number; collectionId: number }
+  | { kind: 'delete-card'; cardId: number };
 
 export interface CardForRenderer {
   id: number;
@@ -47,6 +52,7 @@ export interface CardForRenderer {
   name: string;
   set_code: string;
   collector_number: string;
+  collection_id: number;
   foil: Foil;
   condition: Condition;
   language: string;
@@ -54,6 +60,22 @@ export interface CardForRenderer {
   price_usd: number | null;
   last_seen_at: number;
   needs_review: boolean;
+}
+
+export interface CollectionRow {
+  id: number;
+  name: string;
+  is_wishlist: 0 | 1;
+  created_at: number;
+  sort_order: number;
+}
+
+export interface CollectionForRenderer {
+  id: number;
+  name: string;
+  is_wishlist: boolean;
+  sort_order: number;
+  count: number;
 }
 
 export interface ScansRow {

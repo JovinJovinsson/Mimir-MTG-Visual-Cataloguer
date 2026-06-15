@@ -13,6 +13,15 @@ import {
   type BootstrapStatusDto,
   type CaptureRequest,
   type CaptureResponse,
+  type CardMoveToCollectionRequest,
+  type CardMoveToCollectionResponse,
+  type CollectionsCreateRequest,
+  type CollectionsCreateResponse,
+  type CollectionsDeleteRequest,
+  type CollectionsDeleteResponse,
+  type CollectionsListResponse,
+  type CollectionsRenameRequest,
+  type CollectionsRenameResponse,
   type GetSettingRequest,
   type GetSettingResponse,
   type ListCardsResponse,
@@ -59,6 +68,7 @@ import type { ProcessingQueue, ScanQueueDepthEvent } from './processing-queue.js
 import type { ReviewQueueDb } from './review-queue-db.js';
 import { resolveReviewItem } from './review-resolver.js';
 import { planBulkReviewAction } from './bulk-review-planner.js';
+import { planMoveToCollection } from './move-to-collection-planner.js';
 
 export interface IpcDeps {
   catalogue: CatalogueDb;
@@ -133,6 +143,80 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       return { ok: false, error: errorMessage(err) };
     }
   });
+
+  ipcMain.handle(IPC_CHANNELS.collectionsList, async (): Promise<CollectionsListResponse> => {
+    try {
+      return { ok: true, collections: catalogue.listCollections() };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err) };
+    }
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.collectionsCreate,
+    async (_event, req: CollectionsCreateRequest): Promise<CollectionsCreateResponse> => {
+      try {
+        const name = req.name.trim();
+        if (!name) return { ok: false, error: 'Collection name cannot be empty' };
+        const id = catalogue.createCollection(name);
+        return { ok: true, id };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.collectionsRename,
+    async (_event, req: CollectionsRenameRequest): Promise<CollectionsRenameResponse> => {
+      try {
+        const name = req.name.trim();
+        if (!name) return { ok: false, error: 'Collection name cannot be empty' };
+        catalogue.renameCollection(req.id, name);
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.collectionsDelete,
+    async (_event, req: CollectionsDeleteRequest): Promise<CollectionsDeleteResponse> => {
+      try {
+        catalogue.deleteCollection(req.id, req.mode, req.targetCollectionId);
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.cardMoveToCollection,
+    async (_event, req: CardMoveToCollectionRequest): Promise<CardMoveToCollectionResponse> => {
+      try {
+        const sourceRow = catalogue.findCardById(req.cardId);
+        if (!sourceRow) return { ok: false, error: `Card ${req.cardId} not found` };
+
+        const existingInDest = catalogue.findCardInCollection(
+          sourceRow.scryfall_id,
+          sourceRow.foil,
+          sourceRow.condition,
+          sourceRow.language,
+          req.targetCollectionId,
+        );
+
+        const actions = planMoveToCollection(sourceRow, req.targetCollectionId, existingInDest);
+        for (const action of actions) {
+          catalogue.executeAction(action);
+        }
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
 
   ipcMain.handle(
     IPC_CHANNELS.autocompleteByName,
