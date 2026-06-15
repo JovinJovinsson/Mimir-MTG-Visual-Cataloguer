@@ -191,6 +191,64 @@ html, body {
   padding: 0;
 }
 
+.sidebar-filters {
+  padding: 4px 20px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--fg);
+  cursor: pointer;
+  user-select: none;
+}
+
+.filter-item input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+/* ── Catalogue search bar ──────────────────────────────────────────────────── */
+
+.catalogue-search-bar {
+  margin-bottom: 10px;
+}
+
+.catalogue-search-input {
+  width: 100%;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 8px 12px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.catalogue-search-input:focus {
+  border-color: var(--accent);
+}
+
+.catalogue-search-input::placeholder {
+  color: #4f5870;
+}
+
+.search-error {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--danger);
+  padding: 0 2px;
+}
+
 /* Context menus */
 .context-menu {
   position: fixed;

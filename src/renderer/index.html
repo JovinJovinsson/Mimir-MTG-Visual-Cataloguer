@@ -20,6 +20,22 @@
             <!-- "All" pseudo-collection + dynamic collection items rendered here -->
           </ul>
 
+          <!-- Quick filters section -->
+          <div class="sidebar-section-divider"></div>
+          <div class="sidebar-section-header">
+            <span class="sidebar-section-label">Filters</span>
+          </div>
+          <div class="sidebar-filters">
+            <label class="filter-item">
+              <input type="checkbox" id="filter-foil" />
+              <span>Foil only</span>
+            </label>
+            <label class="filter-item">
+              <input type="checkbox" id="filter-needs-review" />
+              <span>Needs review</span>
+            </label>
+          </div>
+
           <!-- App nav section -->
           <div class="sidebar-section-divider"></div>
           <ul class="sidebar-nav-list">
@@ -126,6 +142,18 @@
             <button id="catalogue-export-btn" class="btn btn--secondary">Export…</button>
           </header>
           <div id="status" class="status" role="status" aria-live="polite"></div>
+
+          <div class="catalogue-search-bar">
+            <input
+              type="search"
+              id="catalogue-search"
+              class="catalogue-search-input"
+              placeholder="Search… name:bolt  set:m10  foil:foil  condition:NM  price:<10  has-review"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <div id="search-error" class="search-error" hidden></div>
+          </div>
 
           <div id="bootstrap-banner" class="bootstrap-banner" hidden>
             <div class="bootstrap-banner-text">

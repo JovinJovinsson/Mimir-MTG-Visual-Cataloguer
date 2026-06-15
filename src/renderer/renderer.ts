@@ -1,4 +1,11 @@
 import type { CardForRenderer, CollectionForRenderer, ScanModePreset } from '../shared/types.js';
+import {
+  parseSearchQuery,
+  filterCards,
+  setSearchToken,
+  toggleSearchToken,
+  toggleHasReview,
+} from '../shared/catalogue-search.js';
 import { initState, step } from './card-detector.js';
 import type { DetectorState } from './card-detector.js';
 import { detectCard } from './frame-detector.js';
@@ -831,13 +838,39 @@ function renderCards(cards: CardForRenderer[]): void {
 }
 
 let allCards: CardForRenderer[] = [];
-let activeCollectionId: number | 'all' = 'all';
+let searchQuery = '';
 
-function applyCollectionFilter(): void {
-  const filtered = activeCollectionId === 'all'
-    ? allCards
-    : allCards.filter((c) => c.collection_id === activeCollectionId);
+// ── Search elements (referenced before DOMContentLoaded runs, wired below) ───
+const catalogueSearchInput = document.getElementById('catalogue-search') as HTMLInputElement;
+const searchErrorEl = document.getElementById('search-error') as HTMLDivElement;
+const filterFoilCheckbox = document.getElementById('filter-foil') as HTMLInputElement;
+const filterNeedsReviewCheckbox = document.getElementById('filter-needs-review') as HTMLInputElement;
+
+function getActiveCollectionFromQuery(): number | 'all' {
+  const ast = parseSearchQuery(searchQuery);
+  const tok = ast.tokens.find((t) => t.kind === 'collection' && !t.negated);
+  if (!tok || tok.kind !== 'collection') return 'all';
+  const col = collectionsCache.find((c) => c.name.toLowerCase() === tok.value.toLowerCase());
+  return col ? col.id : 'all';
+}
+
+function applySearch(): void {
+  const ast = parseSearchQuery(searchQuery);
+  if (ast.error) {
+    searchErrorEl.textContent = ast.error;
+    searchErrorEl.hidden = false;
+  } else {
+    searchErrorEl.hidden = true;
+  }
+  const filtered = filterCards(allCards, collectionsCache, ast);
   renderCards(filtered);
+  // Sync sidebar filter checkboxes to current query
+  filterFoilCheckbox.checked = ast.tokens.some(
+    (t) => t.kind === 'foil' && t.value === 'foil' && !t.negated,
+  );
+  filterNeedsReviewCheckbox.checked = ast.tokens.some(
+    (t) => t.kind === 'has-review' && !t.negated,
+  );
 }
 
 async function refresh(): Promise<void> {
@@ -847,7 +880,7 @@ async function refresh(): Promise<void> {
     return;
   }
   allCards = res.cards;
-  applyCollectionFilter();
+  applySearch();
   refreshCollectionCounts();
 }
 
@@ -981,7 +1014,10 @@ deleteMoveCardsBtn.addEventListener('click', async () => {
     targetCollectionId: inboxId,
   });
   if (!res.ok) { setStatus(res.error, 'error'); return; }
-  if (activeCollectionId === ctxCollectionId) activeCollectionId = 'all';
+  if (getActiveCollectionFromQuery() === ctxCollectionId) {
+    searchQuery = setSearchToken(searchQuery, 'collection', null);
+    catalogueSearchInput.value = searchQuery;
+  }
   await refresh();
   await refreshCollections();
 });
@@ -991,7 +1027,10 @@ deleteCardsBtn.addEventListener('click', async () => {
   if (ctxCollectionId == null) return;
   const res = await window.mimir.collectionsDelete({ id: ctxCollectionId, mode: 'delete-cards' });
   if (!res.ok) { setStatus(res.error, 'error'); return; }
-  if (activeCollectionId === ctxCollectionId) activeCollectionId = 'all';
+  if (getActiveCollectionFromQuery() === ctxCollectionId) {
+    searchQuery = setSearchToken(searchQuery, 'collection', null);
+    catalogueSearchInput.value = searchQuery;
+  }
   await refresh();
   await refreshCollections();
 });
@@ -1046,9 +1085,12 @@ function renderCollectionItem(
   li.appendChild(countSpan);
 
   li.addEventListener('click', () => {
-    activeCollectionId = idStr === 'all' ? 'all' : Number(idStr);
+    searchQuery = idStr === 'all'
+      ? setSearchToken(searchQuery, 'collection', null)
+      : setSearchToken(searchQuery, 'collection', label);
+    catalogueSearchInput.value = searchQuery;
     setActivePage('catalogue');
-    applyCollectionFilter();
+    applySearch();
     renderCollectionsSidebar();
   });
 
@@ -1065,16 +1107,16 @@ function renderCollectionItem(
 
 function renderCollectionsSidebar(): void {
   collectionsList.innerHTML = '';
+  const activeColId = getActiveCollectionFromQuery();
 
   const allTotal = allCards.reduce((s, c) => s + c.quantity, 0);
   collectionsList.appendChild(
-    renderCollectionItem('All', 'all', allTotal, false, activeCollectionId === 'all'),
+    renderCollectionItem('All', 'all', allTotal, false, activeColId === 'all'),
   );
 
   for (const col of collectionsCache) {
     const count = allCards.filter((c) => c.collection_id === col.id).reduce((s, c) => s + c.quantity, 0);
-    const isActive = activeCollectionId === col.id;
-    collectionsList.appendChild(renderCollectionItem(col.name, col.id, count, col.is_wishlist, isActive));
+    collectionsList.appendChild(renderCollectionItem(col.name, col.id, count, col.is_wishlist, activeColId === col.id));
   }
 }
 
@@ -1085,6 +1127,27 @@ async function refreshCollections(): Promise<void> {
   renderCollectionsSidebar();
   populatePresetCollectionDropdown(collectionsCache);
 }
+
+// ── Search input + sidebar filter wiring ──────────────────────────────────────
+
+catalogueSearchInput.addEventListener('input', () => {
+  searchQuery = catalogueSearchInput.value;
+  applySearch();
+  renderCollectionsSidebar();
+});
+
+filterFoilCheckbox.addEventListener('change', () => {
+  searchQuery = toggleSearchToken(searchQuery, 'foil', 'foil');
+  catalogueSearchInput.value = searchQuery;
+  applySearch();
+  renderCollectionsSidebar();
+});
+
+filterNeedsReviewCheckbox.addEventListener('change', () => {
+  searchQuery = toggleHasReview(searchQuery);
+  catalogueSearchInput.value = searchQuery;
+  applySearch();
+});
 
 // ── Export dialog ─────────────────────────────────────────────────────────────
 
@@ -1117,8 +1180,9 @@ exportConfirmBtn.addEventListener('click', async () => {
 
   const format = exportFormatSelect.value as 'moxfield' | 'deckbox' | 'manabox' | 'mimir-native';
   const scope = exportScopeSelect.value as 'all' | 'collection';
-  const collectionId = scope === 'collection' && activeCollectionId !== 'all'
-    ? (activeCollectionId as number)
+  const activeColId = getActiveCollectionFromQuery();
+  const collectionId = scope === 'collection' && activeColId !== 'all'
+    ? (activeColId as number)
     : undefined;
 
   const res = await window.mimir.exportCsv({ format, scope, collectionId });
