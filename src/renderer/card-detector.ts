@@ -16,7 +16,7 @@ export interface FrameInput {
 export type CaptureEvent = { kind: 'capture'; quad: Quad };
 export type StepResult = { state: DetectorState; events: CaptureEvent[] };
 
-const STABILITY_MS = 400;
+const STABILITY_MS = 200;
 const STABLE_IOU = 0.85;
 const LEAVE_IOU = 0.30;
 const LEAVE_MS = 300;
