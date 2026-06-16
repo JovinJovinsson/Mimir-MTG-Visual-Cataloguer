@@ -6,6 +6,7 @@ import {
   inferPrice,
   DEFAULT_THRESHOLDS,
   type InferenceResult,
+  type EtchedContext,
 } from '../src/main/field-inference.js';
 import { planCatalogueAdditionWithInferences, type FieldInferences } from '../src/main/planner.js';
 import type { CardsRow } from '../src/shared/types.js';
@@ -108,6 +109,49 @@ describe('inferFoil', () => {
     expect(result.value).toBe('normal');
     expect(result.confidence).toBeGreaterThan(0);
   });
+
+  describe('etched-foil detection via EtchedContext', () => {
+    function foilLikeRgba(): Uint8Array {
+      // Mix saturated + grey → triggers foil heuristic
+      const count = 400;
+      const rgba = new Uint8Array(count * 4);
+      for (let i = 0; i < count; i++) {
+        if (i % 2 === 0) {
+          rgba[i * 4] = 255; rgba[i * 4 + 1] = 0; rgba[i * 4 + 2] = 0;
+        } else {
+          rgba[i * 4] = 128; rgba[i * 4 + 1] = 128; rgba[i * 4 + 2] = 128;
+        }
+        rgba[i * 4 + 3] = 255;
+      }
+      return rgba;
+    }
+
+    it('returns etched when printing has etched finish + etched price and pixels look foil-like', () => {
+      const ctx: EtchedContext = { finishes: ['normal', 'etched'], priceUsdEtched: 12.5 };
+      const result = inferFoil(foilLikeRgba(), 20, 20, ctx);
+      expect(result.value).toBe('etched');
+      expect(result.confidence).toBeGreaterThan(DEFAULT_THRESHOLDS.acceptAndFlag);
+    });
+
+    it('returns foil when printing has etched finish but no etched price', () => {
+      const ctx: EtchedContext = { finishes: ['etched'], priceUsdEtched: null };
+      const result = inferFoil(foilLikeRgba(), 20, 20, ctx);
+      expect(result.value).toBe('foil');
+    });
+
+    it('returns foil when printing has no etched finish even with etched price', () => {
+      const ctx: EtchedContext = { finishes: ['normal', 'foil'], priceUsdEtched: 12.5 };
+      const result = inferFoil(foilLikeRgba(), 20, 20, ctx);
+      expect(result.value).toBe('foil');
+    });
+
+    it('returns normal when pixels are not foil-like regardless of context', () => {
+      const ctx: EtchedContext = { finishes: ['etched'], priceUsdEtched: 12.5 };
+      const rgba = solidRgba(50, 50, 52, 1000); // near-greyscale
+      const result = inferFoil(rgba, 100, 10, ctx);
+      expect(result.value).toBe('normal');
+    });
+  });
 });
 
 // ── inferLanguage ─────────────────────────────────────────────────────────────
@@ -173,8 +217,18 @@ describe('inferPrice', () => {
     expect(result.confidence).toBe(0);
   });
 
-  it('uses normal price for etched (usd_etched not yet in schema)', () => {
+  it('falls back to normal price for etched when no etched price supplied', () => {
     const result = inferPrice(2.5, 4.0, 'etched');
+    expect(result.value).toBe(2.5);
+  });
+
+  it('uses etched price when available and foil is etched', () => {
+    const result = inferPrice(2.5, 4.0, 'etched', 3.0);
+    expect(result.value).toBe(3.0);
+  });
+
+  it('falls back to normal price when etched price is null', () => {
+    const result = inferPrice(2.5, 4.0, 'etched', null);
     expect(result.value).toBe(2.5);
   });
 });

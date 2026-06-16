@@ -72,6 +72,12 @@ export const scryfallIndexMigrations: Migration[] = [
       `);
     },
   },
+  {
+    version: 3,
+    up: (db) => {
+      db.exec(`ALTER TABLE scryfall_cards ADD COLUMN price_usd_etched REAL`);
+    },
+  },
 ];
 
 export type SetDownloadStatus = 'none' | 'downloading' | 'complete' | 'error';
@@ -138,6 +144,8 @@ export interface HashedCardWithCrop extends HashedCard {
   art_crop_path: string | null;
   lang: string;
   price_usd_foil: number | null;
+  price_usd_etched: number | null;
+  finishes_json: string;
 }
 
 export interface ScryfallIndexDb {
@@ -197,14 +205,14 @@ function wrap(db: Database.Database): ScryfallIndexDb {
       released_at, type_line, oracle_text, mana_cost, cmc,
       colors_json, color_identity_json, rarity, lang,
       image_art_crop_url, image_normal_url, image_small_url,
-      price_usd, price_usd_foil, finishes_json, layout, is_digital,
+      price_usd, price_usd_foil, price_usd_etched, finishes_json, layout, is_digital,
       phash, art_crop_path
     ) VALUES (
       @scryfall_id, @oracle_id, @name, @set_code, @set_name, @collector_number,
       @released_at, @type_line, @oracle_text, @mana_cost, @cmc,
       @colors_json, @color_identity_json, @rarity, @lang,
       @image_art_crop_url, @image_normal_url, @image_small_url,
-      @price_usd, @price_usd_foil, @finishes_json, @layout, @is_digital,
+      @price_usd, @price_usd_foil, @price_usd_etched, @finishes_json, @layout, @is_digital,
       @phash, @art_crop_path
     )
     ON CONFLICT(scryfall_id) DO UPDATE SET
@@ -227,6 +235,7 @@ function wrap(db: Database.Database): ScryfallIndexDb {
       image_small_url = excluded.image_small_url,
       price_usd = excluded.price_usd,
       price_usd_foil = excluded.price_usd_foil,
+      price_usd_etched = excluded.price_usd_etched,
       finishes_json = excluded.finishes_json,
       layout = excluded.layout,
       is_digital = excluded.is_digital
@@ -307,7 +316,7 @@ function wrap(db: Database.Database): ScryfallIndexDb {
 
   const getAllHashedCardsWithCropStmt = db.prepare<[], HashedCardWithCrop>(`
     SELECT scryfall_id, name, set_code, set_name, collector_number, price_usd, phash, art_crop_path,
-           COALESCE(lang, 'en') AS lang, price_usd_foil
+           COALESCE(lang, 'en') AS lang, price_usd_foil, price_usd_etched, finishes_json
     FROM scryfall_cards
     WHERE phash IS NOT NULL
   `);

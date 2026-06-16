@@ -5,6 +5,11 @@ export interface InferenceResult<T> {
   confidence: number; // [0.0, 1.0]
 }
 
+export interface EtchedContext {
+  finishes: Foil[];
+  priceUsdEtched: number | null;
+}
+
 export interface InferenceThresholds {
   acceptSilently: number; // above → accept, no flag
   acceptAndFlag: number;  // above (but below acceptSilently) → accept + flag for review
@@ -36,11 +41,14 @@ const SCRYFALL_LANG_MAP: Record<string, string> = {
 /**
  * Infer foil status from raw RGBA pixel data.
  * Foil cards produce higher saturation and higher saturation variance due to glare.
+ * When etchedCtx is provided and the printing carries an etched finish with an
+ * etched price, a foil-like pixel signal is reclassified as "etched".
  */
 export function inferFoil(
   rgba: Uint8Array,
   width: number,
   height: number,
+  etchedCtx?: EtchedContext,
 ): InferenceResult<Foil> {
   const count = width * height;
   if (count === 0) return { value: 'normal', confidence: 0.5 };
@@ -63,8 +71,16 @@ export function inferFoil(
   const meanSat = totalSat / count;
   const variance = totalSatSq / count - meanSat * meanSat;
 
-  // High saturation variance + high mean saturation → rainbow glare → foil
+  // High saturation variance + high mean saturation → rainbow glare → foil-like
   if (meanSat > 0.35 && variance > 0.04) {
+    // If the printing supports etched and has an etched price, classify as etched
+    if (
+      etchedCtx &&
+      etchedCtx.finishes.includes('etched') &&
+      etchedCtx.priceUsdEtched != null
+    ) {
+      return { value: 'etched', confidence: 0.65 };
+    }
     return { value: 'foil', confidence: 0.65 };
   }
   // Very low saturation → near-greyscale → very likely non-foil
@@ -95,8 +111,16 @@ export function inferPrice(
   priceUsd: number | null,
   priceUsdFoil: number | null,
   foil: Foil,
+  priceUsdEtched?: number | null,
 ): InferenceResult<number | null> {
-  const price = foil === 'foil' ? (priceUsdFoil ?? priceUsd) : priceUsd;
+  let price: number | null;
+  if (foil === 'etched') {
+    price = (priceUsdEtched ?? null) ?? priceUsd;
+  } else if (foil === 'foil') {
+    price = priceUsdFoil ?? priceUsd;
+  } else {
+    price = priceUsd;
+  }
   if (price == null) {
     return { value: null, confidence: 0 };
   }

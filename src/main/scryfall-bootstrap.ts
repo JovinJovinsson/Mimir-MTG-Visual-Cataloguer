@@ -91,6 +91,7 @@ export interface ScryfallCardInsert {
   image_small_url: string | null;
   price_usd: number | null;
   price_usd_foil: number | null;
+  price_usd_etched: number | null;
   finishes_json: string;
   layout: string | null;
   is_digital: 0 | 1;
@@ -174,6 +175,7 @@ function normaliseCard(raw: ScryfallBulkCard): ScryfallCardInsert {
     image_small_url: raw.image_uris?.small ?? null,
     price_usd: parsePrice(raw.prices?.usd),
     price_usd_foil: parsePrice(raw.prices?.usd_foil),
+    price_usd_etched: parsePrice(raw.prices?.usd_etched),
     finishes_json: JSON.stringify(raw.finishes ?? ['nonfoil']),
     layout: raw.layout ?? null,
     is_digital: raw.digital ? 1 : 0,

@@ -14,7 +14,9 @@ import {
   inferPrice,
   classifyInference,
   DEFAULT_THRESHOLDS,
+  type EtchedContext,
 } from './field-inference.js';
+import { detectAmbiguity } from './ambiguity-detector.js';
 import { planCatalogueAdditionWithInferences, type FieldInferences } from './planner.js';
 import type { ScanModePreset } from '../shared/types.js';
 import type { ScanDb } from './scan-db.js';
@@ -157,6 +159,23 @@ export class ProcessingQueue extends EventEmitter {
       return;
     }
 
+    // Compute foil pixel inference early so its glare signal can feed ambiguity detection.
+    // Look up the full card data first to provide etched context.
+    const bestCard = allCards.find((c) => c.scryfall_id === best.scryfallId);
+    const finishes = bestCard?.finishes_json
+      ? (JSON.parse(bestCard.finishes_json) as string[]).map((f) =>
+          f === 'nonfoil' ? 'normal' : f,
+        )
+      : [];
+    const etchedCtx: EtchedContext = {
+      finishes: finishes as import('../shared/types.js').Foil[],
+      priceUsdEtched: bestCard?.price_usd_etched ?? null,
+    };
+
+    const foilResult = inferFoil(decoded.rgba, decoded.width, decoded.height, etchedCtx);
+    // Glare signal: confidence when foil/etched was detected, else 0
+    const glareSignal = foilResult.value !== 'normal' ? foilResult.confidence : 0;
+
     if (best.hammingDistance > SILENT_ACCEPT_THRESHOLD) {
       // Within match threshold but not a clear winner → ambiguous review
       scanDb.updateScanRecognition(item.scanId, {
@@ -176,13 +195,32 @@ export class ProcessingQueue extends EventEmitter {
       return;
     }
 
-    // Look up the full card data for inference (ReviewCandidate lacks lang/priceUsdFoil)
-    const bestCard = allCards.find((c) => c.scryfall_id === best.scryfallId);
+    // Even within the silent-accept zone, high foil glare with close candidates is unreliable
+    if (detectAmbiguity(candidates, glareSignal) === 'ambiguous_identity') {
+      scanDb.updateScanRecognition(item.scanId, {
+        phash,
+        confidenceScore,
+        cardId: null,
+        inferencesJson: null,
+        neededManualReview: 1,
+      });
+      reviewQueueDb.insertReviewItem({
+        scanId: item.scanId,
+        reason: 'ambiguous_identity',
+        candidatesJson: JSON.stringify(candidates),
+        createdAt: item.capturedAt,
+      });
+      onReviewCountChanged?.();
+      return;
+    }
 
-    // Run per-field inference on the accepted card
-    const foilResult = inferFoil(decoded.rgba, decoded.width, decoded.height);
     const langResult = inferLanguage(bestCard?.lang ?? null);
-    const priceResult = inferPrice(best.priceUsd, bestCard?.price_usd_foil ?? null, foilResult.value);
+    const priceResult = inferPrice(
+      best.priceUsd,
+      bestCard?.price_usd_foil ?? null,
+      foilResult.value,
+      bestCard?.price_usd_etched ?? null,
+    );
 
     const inferences: FieldInferences = {
       foil: foilResult,

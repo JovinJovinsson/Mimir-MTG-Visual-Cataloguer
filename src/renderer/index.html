@@ -619,6 +619,46 @@
             <span id="backup-toast-message"></span>
             <button id="backup-toast-close" class="backup-toast-close" aria-label="Dismiss">✕</button>
           </div>
+
+          <!-- Scan behaviour section -->
+          <div class="settings-section">
+            <h2 class="settings-section-title">Scan Behaviour</h2>
+
+            <div class="settings-group">
+              <div class="settings-row">
+                <div class="settings-row-info">
+                  <span class="settings-label">Capture sound</span>
+                  <span class="settings-hint">Play a short beep when a card is captured.</span>
+                </div>
+                <label class="settings-toggle">
+                  <input type="checkbox" id="scan-capture-sound-toggle" />
+                  <span class="settings-toggle-track"></span>
+                </label>
+              </div>
+
+              <div class="settings-row">
+                <div class="settings-row-info">
+                  <span class="settings-label">Visual capture flash</span>
+                  <span class="settings-hint">Show green outline when a card is captured.</span>
+                </div>
+                <label class="settings-toggle">
+                  <input type="checkbox" id="scan-capture-flash-toggle" checked />
+                  <span class="settings-toggle-track"></span>
+                </label>
+              </div>
+
+              <div class="settings-row">
+                <div class="settings-row-info">
+                  <span class="settings-label">Review pending alert</span>
+                  <span class="settings-hint">Play a sound when new items arrive in the review queue.</span>
+                </div>
+                <label class="settings-toggle">
+                  <input type="checkbox" id="scan-review-alert-toggle" />
+                  <span class="settings-toggle-track"></span>
+                </label>
+              </div>
+            </div>
+          </div>
         </section>
       </main>
 

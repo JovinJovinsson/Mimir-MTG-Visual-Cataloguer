@@ -2631,6 +2631,13 @@ let activeStream: MediaStream | null = null;
 let detectorState: DetectorState = initState();
 let rafHandle: number | null = null;
 let lastFrameMs = 0;
+let disconnectedDeviceId: string | null = null;
+
+// ── Scan preferences ──────────────────────────────────────────────────────────
+// Loaded from settings on page enter; defaults applied immediately.
+let prefCaptureSound = false;
+let prefCaptureFlash = true;
+let prefReviewAlert = false;
 
 const frameCanvas = document.createElement('canvas');
 const frameCtx = frameCanvas.getContext('2d')!;
@@ -2693,12 +2700,49 @@ function drawOverlay(
   ctx.lineTo(tx(q3.x), ty(q3.y));
   ctx.closePath();
 
-  ctx.strokeStyle = phase === 'cooldown' ? '#00FF00' : '#FFD700';
+  // Green flash on capture can be disabled via preferences
+  const isCooldown = phase === 'cooldown';
+  if (isCooldown && !prefCaptureFlash) return;
+  ctx.strokeStyle = isCooldown ? '#00FF00' : '#FFD700';
   ctx.lineWidth = Math.max(2, CW * 0.004);
   ctx.shadowColor = ctx.strokeStyle;
   ctx.shadowBlur = 8;
   ctx.stroke();
   ctx.shadowBlur = 0;
+}
+
+function playCaptureSound(): void {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.08);
+  } catch {
+    // Audio not available in this environment
+  }
+}
+
+function playReviewAlert(): void {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 440;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.2);
+  } catch {
+    // Audio not available in this environment
+  }
 }
 
 async function fireCapture(
@@ -2707,6 +2751,8 @@ async function fireCapture(
   H: number,
   quad: import('./card-detector.js').Quad,
 ): Promise<void> {
+  if (prefCaptureSound) playCaptureSound();
+
   const warped = warpCard(pixels, W, H, quad);
   const wW = 400, wH = 559;
 
@@ -2810,6 +2856,8 @@ async function startCamera(deviceId?: string): Promise<void> {
     const track = stream.getVideoTracks()[0];
     if (track) {
       track.onended = () => {
+        const lostId = track.getSettings().deviceId ?? null;
+        if (lostId) disconnectedDeviceId = lostId;
         showScanError('Camera disconnected — select another camera or reconnect.');
         stopCamera();
       };
@@ -2818,6 +2866,7 @@ async function startCamera(deviceId?: string): Promise<void> {
     await populateCameraList();
     const currentId = track?.getSettings().deviceId ?? '';
     if (currentId) {
+      disconnectedDeviceId = null; // successful start clears any pending reconnect
       cameraSelect.value = currentId;
       void window.mimir.settingsSet({ key: 'preferredCameraId', value: currentId });
     }
@@ -2866,6 +2915,20 @@ async function loadRecentScans(): Promise<void> {
   if (res.ok) renderRecentScans(res.scans);
 }
 
+async function loadScanPrefs(): Promise<void> {
+  const [soundRes, flashRes, alertRes] = await Promise.all([
+    window.mimir.settingsGet({ key: 'scan.captureSound' }),
+    window.mimir.settingsGet({ key: 'scan.captureFlash' }),
+    window.mimir.settingsGet({ key: 'scan.reviewAlert' }),
+  ]);
+  prefCaptureSound = soundRes.ok ? soundRes.value === 'true' : false;
+  prefCaptureFlash = flashRes.ok ? (flashRes.value === null ? true : flashRes.value === 'true') : true;
+  prefReviewAlert = alertRes.ok ? alertRes.value === 'true' : false;
+  if (scanCaptureSoundToggle) scanCaptureSoundToggle.checked = prefCaptureSound;
+  if (scanCaptureFlashToggle) scanCaptureFlashToggle.checked = prefCaptureFlash;
+  if (scanReviewAlertToggle) scanReviewAlertToggle.checked = prefReviewAlert;
+}
+
 async function enterScanPage(): Promise<void> {
   await loadRecentScans();
   const prefRes = await window.mimir.settingsGet({ key: 'preferredCameraId' });
@@ -2885,6 +2948,21 @@ scanRetryBtn.addEventListener('click', () => {
 
 scanRequestPermissionBtn.addEventListener('click', () => {
   void startCamera(undefined);
+});
+
+// Auto-recover when the previously disconnected camera reappears.
+navigator.mediaDevices.addEventListener('devicechange', () => {
+  if (!disconnectedDeviceId || activeStream) return;
+  void (async () => {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const reappeared = devices.some(
+      (d) => d.kind === 'videoinput' && d.deviceId === disconnectedDeviceId,
+    );
+    if (reappeared) {
+      const id = disconnectedDeviceId;
+      void startCamera(id);
+    }
+  })();
 });
 
 let queueHighWater = 0;
@@ -2964,7 +3042,9 @@ document.addEventListener('keydown', (e) => {
 // ── Review pending updates ────────────────────────────────────────────────────
 
 window.mimir.onReviewPendingUpdate((event: ReviewCountDto) => {
+  const prevCount = parseInt(reviewCountEl.textContent ?? '0', 10) || 0;
   applyReviewCount(event.count);
+  if (event.count > prevCount && prefReviewAlert) playReviewAlert();
   if (currentPage === 'review') {
     if (reviewPageMode === 'list') {
       void loadReviewQueue();
@@ -3007,6 +3087,29 @@ window.mimir.onScryfallUpdateAvailable((_event: ScryfallUpdateAvailableDto) => {
 });
 
 // ── Settings page ─────────────────────────────────────────────────────────────
+
+const scanCaptureSoundToggle = document.getElementById('scan-capture-sound-toggle') as HTMLInputElement | null;
+const scanCaptureFlashToggle = document.getElementById('scan-capture-flash-toggle') as HTMLInputElement | null;
+const scanReviewAlertToggle = document.getElementById('scan-review-alert-toggle') as HTMLInputElement | null;
+
+if (scanCaptureSoundToggle) {
+  scanCaptureSoundToggle.addEventListener('change', () => {
+    prefCaptureSound = scanCaptureSoundToggle.checked;
+    void window.mimir.settingsSet({ key: 'scan.captureSound', value: String(prefCaptureSound) });
+  });
+}
+if (scanCaptureFlashToggle) {
+  scanCaptureFlashToggle.addEventListener('change', () => {
+    prefCaptureFlash = scanCaptureFlashToggle.checked;
+    void window.mimir.settingsSet({ key: 'scan.captureFlash', value: String(prefCaptureFlash) });
+  });
+}
+if (scanReviewAlertToggle) {
+  scanReviewAlertToggle.addEventListener('change', () => {
+    prefReviewAlert = scanReviewAlertToggle.checked;
+    void window.mimir.settingsSet({ key: 'scan.reviewAlert', value: String(prefReviewAlert) });
+  });
+}
 
 const backupExportBtn = document.getElementById('backup-export-btn') as HTMLButtonElement;
 const backupRestoreBtn = document.getElementById('backup-restore-btn') as HTMLButtonElement;
@@ -3070,6 +3173,9 @@ async function loadSettingsPage(): Promise<void> {
   } else {
     backupFailureBadge.hidden = true;
   }
+
+  // Scan preferences
+  await loadScanPrefs();
 }
 
 backupExportBtn.addEventListener('click', async () => {
