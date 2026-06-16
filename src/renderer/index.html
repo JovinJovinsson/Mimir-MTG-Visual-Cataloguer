@@ -439,6 +439,22 @@
               </table>
             </div>
 
+            <!-- Free-text name rescue (shown for non-field-correction items) -->
+            <div id="review-free-text-wrap" class="review-free-text-wrap" hidden>
+              <label class="review-free-text-label" for="review-free-text-input">Or search by name</label>
+              <div class="review-free-text-autocomplete-wrap">
+                <input
+                  type="text"
+                  id="review-free-text-input"
+                  class="review-free-text-input"
+                  placeholder="e.g. Lightning Bolt"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <ul id="review-free-text-list" class="autocomplete-list" hidden></ul>
+              </div>
+            </div>
+
             <!-- Field corrections (shown for low_confidence_field items) -->
             <div id="review-field-corrections" class="review-field-corrections" hidden>
               <div class="review-field-correction-row" id="review-field-foil-row" hidden>
@@ -643,6 +659,22 @@
               </thead>
               <tbody id="slide-list-body"></tbody>
             </table>
+          </div>
+
+          <!-- Free-text name rescue (shown for non-field-correction items) -->
+          <div id="slide-free-text-wrap" class="review-free-text-wrap" hidden>
+            <label class="review-free-text-label" for="slide-free-text-input">Or search by name</label>
+            <div class="review-free-text-autocomplete-wrap">
+              <input
+                type="text"
+                id="slide-free-text-input"
+                class="review-free-text-input"
+                placeholder="e.g. Lightning Bolt"
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <ul id="slide-free-text-list" class="autocomplete-list" hidden></ul>
+            </div>
           </div>
 
           <!-- Field corrections (shown for low_confidence_field items) -->

@@ -1919,6 +1919,47 @@ tbody tr:last-child td { border-bottom: none; }
   font-size: 12px !important;
 }
 
+/* Free-text name rescue (009) */
+.review-free-text-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.review-free-text-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--fg-muted);
+}
+
+.review-free-text-autocomplete-wrap {
+  position: relative;
+}
+
+.review-free-text-input {
+  width: 100%;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 7px 10px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 100ms ease;
+}
+
+.review-free-text-input:focus {
+  border-color: var(--accent);
+}
+
+.review-free-text-input::placeholder {
+  color: #4f5870;
+}
+
 /* ── end Review page ──────────────────────────────────────────── */
 
 /* ── Settings page ────────────────────────────────────────────── */

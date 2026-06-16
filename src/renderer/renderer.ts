@@ -49,6 +49,9 @@ interface ReviewPanelDom {
   langRow?: HTMLDivElement;
   langInput?: HTMLInputElement;
   pendingLabel?: HTMLElement;
+  freeTextWrap?: HTMLDivElement;
+  freeTextInput?: HTMLInputElement;
+  freeTextList?: HTMLUListElement;
   onItemActioned?: () => Promise<void>;
 }
 
@@ -57,6 +60,10 @@ class ReviewPanelController {
   private _currentItem: ReviewItemDto | null = null;
   private _selectedIndex = -1;
   private viewMode: 'gallery' | 'list' = 'gallery';
+  private _freeTextSelected: import('../shared/ipc.js').AutocompleteHitDto | null = null;
+  private _freeTextHits: import('../shared/ipc.js').AutocompleteHitDto[] = [];
+  private _freeTextActiveIndex = -1;
+  private _freeTextDebounce: ReturnType<typeof setTimeout> | null = null;
 
   constructor(dom: ReviewPanelDom) {
     this.dom = dom;
@@ -208,6 +215,17 @@ class ReviewPanelController {
     this.dom.toggleList.hidden = false;
     if (this.dom.fieldCorrections) this.dom.fieldCorrections.hidden = true;
 
+    // Reset and show free-text rescue
+    this._freeTextSelected = null;
+    this._freeTextHits = [];
+    this._freeTextActiveIndex = -1;
+    if (this.dom.freeTextInput) this.dom.freeTextInput.value = '';
+    if (this.dom.freeTextList) {
+      this.dom.freeTextList.innerHTML = '';
+      this.dom.freeTextList.hidden = true;
+    }
+    if (this.dom.freeTextWrap) this.dom.freeTextWrap.hidden = false;
+
     this.renderGallery(item);
     this.renderList(item);
     this.applyViewMode();
@@ -219,6 +237,7 @@ class ReviewPanelController {
     this.dom.toggleList.hidden = true;
     this.dom.gallery.hidden = true;
     this.dom.list.hidden = true;
+    if (this.dom.freeTextWrap) this.dom.freeTextWrap.hidden = true;
 
     const flagged = item.flaggedFields ?? [];
     const inferred = item.inferredValues ?? {};
@@ -251,9 +270,11 @@ class ReviewPanelController {
   showEmpty(): void {
     this._currentItem = null;
     this._selectedIndex = -1;
+    this._freeTextSelected = null;
     this.dom.btnConfirm.disabled = true;
     this.dom.empty.hidden = false;
     this.dom.content.hidden = true;
+    if (this.dom.freeTextWrap) this.dom.freeTextWrap.hidden = true;
   }
 
   async loadAndRender(): Promise<void> {
@@ -287,6 +308,95 @@ class ReviewPanelController {
     this.dom.btnConfirm.addEventListener('click', () => { void this.handleConfirm(); });
     this.dom.btnSkip.addEventListener('click', () => { void this.handleSkip(); });
     this.dom.btnDismiss.addEventListener('click', () => { void this.handleDismiss(); });
+
+    if (this.dom.freeTextInput && this.dom.freeTextList) {
+      this.bindFreeText(this.dom.freeTextInput, this.dom.freeTextList);
+    }
+  }
+
+  private bindFreeText(inp: HTMLInputElement, list: HTMLUListElement): void {
+    inp.addEventListener('input', () => {
+      this._freeTextSelected = null;
+      this.dom.btnConfirm.disabled = this._selectedIndex < 0;
+      if (this._freeTextDebounce) clearTimeout(this._freeTextDebounce);
+      const query = inp.value.trim();
+      if (query.length < 2) {
+        list.innerHTML = '';
+        list.hidden = true;
+        this._freeTextHits = [];
+        this._freeTextActiveIndex = -1;
+        return;
+      }
+      this._freeTextDebounce = setTimeout(() => {
+        void window.mimir.autocompleteByName(query, 12).then((res) => {
+          if (!res.ok) return;
+          this._freeTextHits = res.hits;
+          this._freeTextActiveIndex = res.hits.length > 0 ? 0 : -1;
+          this.renderFreeTextList(inp, list);
+        });
+      }, 80);
+    });
+
+    inp.addEventListener('keydown', (e) => {
+      if (list.hidden) return;
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        this._freeTextActiveIndex = Math.min(this._freeTextHits.length - 1, this._freeTextActiveIndex + 1);
+        this.renderFreeTextList(inp, list);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        this._freeTextActiveIndex = Math.max(0, this._freeTextActiveIndex - 1);
+        this.renderFreeTextList(inp, list);
+      } else if (e.key === 'Enter') {
+        if (this._freeTextActiveIndex >= 0) {
+          e.preventDefault();
+          this.chooseFreeTextHit(this._freeTextActiveIndex, inp, list);
+        }
+      } else if (e.key === 'Escape') {
+        list.hidden = true;
+      }
+    });
+
+    inp.addEventListener('blur', () => {
+      setTimeout(() => { list.hidden = true; }, 100);
+    });
+  }
+
+  private renderFreeTextList(inp: HTMLInputElement, list: HTMLUListElement): void {
+    list.innerHTML = '';
+    if (this._freeTextHits.length === 0) { list.hidden = true; return; }
+    this._freeTextHits.forEach((hit, i) => {
+      const li = document.createElement('li');
+      if (i === this._freeTextActiveIndex) li.classList.add('is-active');
+      const name = document.createElement('span');
+      name.className = 'autocomplete-name';
+      name.textContent = hit.name;
+      const meta = document.createElement('span');
+      meta.className = 'autocomplete-meta';
+      meta.textContent = `${hit.set_code} · #${hit.collector_number}`;
+      li.appendChild(name);
+      li.appendChild(meta);
+      li.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        this.chooseFreeTextHit(i, inp, list);
+      });
+      list.appendChild(li);
+    });
+    list.hidden = false;
+  }
+
+  private chooseFreeTextHit(
+    i: number,
+    inp: HTMLInputElement,
+    list: HTMLUListElement,
+  ): void {
+    const hit = this._freeTextHits[i];
+    if (!hit) return;
+    this._freeTextSelected = hit;
+    inp.value = `${hit.name} — ${hit.set_code.toUpperCase()} #${hit.collector_number}`;
+    list.hidden = true;
+    // Enable confirm if no gallery candidate is selected
+    this.dom.btnConfirm.disabled = false;
   }
 
   private async handleConfirm(): Promise<void> {
@@ -297,13 +407,21 @@ class ReviewPanelController {
       return;
     }
 
-    if (this._selectedIndex < 0) return;
-    const candidate = this._currentItem.candidates[this._selectedIndex];
-    if (!candidate) return;
+    // Determine confirmed scryfallId: gallery selection takes priority, then free-text
+    let scryfallId: string | null = null;
+    if (this._selectedIndex >= 0) {
+      const candidate = this._currentItem.candidates[this._selectedIndex];
+      if (candidate) scryfallId = candidate.scryfallId;
+    } else if (this._freeTextSelected) {
+      scryfallId = this._freeTextSelected.scryfall_id;
+    }
+
+    if (!scryfallId) return;
+
     this.dom.btnConfirm.disabled = true;
     const res = await window.mimir.reviewConfirm({
       reviewId: this._currentItem.id,
-      scryfallId: candidate.scryfallId,
+      scryfallId,
     });
     if (res.ok) {
       if (this.dom.onItemActioned) {
@@ -448,6 +566,9 @@ const reviewPagePanel = new ReviewPanelController({
   langRow: document.getElementById('review-field-lang-row') as HTMLDivElement,
   langInput: document.getElementById('review-field-lang-input') as HTMLInputElement,
   pendingLabel: document.getElementById('review-pending-label') as HTMLSpanElement,
+  freeTextWrap: document.getElementById('review-free-text-wrap') as HTMLDivElement,
+  freeTextInput: document.getElementById('review-free-text-input') as HTMLInputElement,
+  freeTextList: document.getElementById('review-free-text-list') as HTMLUListElement,
   onItemActioned: async () => {
     await loadReviewQueue();
     await refresh();
@@ -480,6 +601,9 @@ const slideOutPanel = new ReviewPanelController({
   langRow: document.getElementById('slide-field-lang-row') as HTMLDivElement,
   langInput: document.getElementById('slide-field-lang-input') as HTMLInputElement,
   pendingLabel: document.getElementById('slide-pending-label') as HTMLSpanElement,
+  freeTextWrap: document.getElementById('slide-free-text-wrap') as HTMLDivElement,
+  freeTextInput: document.getElementById('slide-free-text-input') as HTMLInputElement,
+  freeTextList: document.getElementById('slide-free-text-list') as HTMLUListElement,
 });
 
 function openSlideOut(): void {
