@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "description": "Local-first MTG card scanner and catalogue",
   "main": "dist/main/main.js",
+  "author": "JovinJovinsson",
   "private": true,
   "scripts": {
-    "build:main": "esbuild src/main/main.ts --bundle --outfile=dist/main/main.js --platform=node --format=cjs --target=node20 --external:electron --external:better-sqlite3",
+    "build:main": "esbuild src/main/main.ts --bundle --outfile=dist/main/main.js --platform=node --format=cjs --target=node20 --external:electron --external:better-sqlite3 --external:electron-updater",
     "build:worker": "esbuild src/main/bulk-parse-worker.ts --bundle --outfile=dist/main/bulk-parse-worker.js --platform=node --format=cjs --target=node20",
     "build:preload": "esbuild src/main/preload.ts --bundle --outfile=dist/main/preload.js --platform=node --format=cjs --target=node20 --external:electron",
     "build:renderer": "esbuild src/renderer/renderer.ts --bundle --outfile=dist/renderer/renderer.js --platform=browser --format=iife --target=es2022",
@@ -14,21 +15,64 @@
     "rebuild:node": "npm rebuild better-sqlite3",
     "rebuild:electron": "electron-rebuild -f -w better-sqlite3",
     "dev": "npm run build && npm run rebuild:electron && electron .",
+    "package": "npm run build && npm run rebuild:electron && electron-builder --publish never",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "pretest": "npm run rebuild:node",
     "test": "vitest run"
+  },
+  "build": {
+    "appId": "com.jovinjovinsson.mimir",
+    "productName": "Mimir",
+    "copyright": "Copyright © 2026 JovinJovinsson",
+    "directories": {
+      "buildResources": "build",
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "JovinJovinsson",
+      "repo": "mimir"
+    },
+    "afterSign": "build/afterSign.js",
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["universal"] }],
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist"
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "signingHashAlgorithms": ["sha256"]
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Utility"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "npmRebuild": true
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.4",
     "@types/better-sqlite3": "^7.6.11",
     "@types/node": "^22.10.0",
     "electron": "^33.2.0",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.24.0",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",
+    "electron-updater": "^6.8.9",
     "fflate": "^0.8.3"
   }
 }

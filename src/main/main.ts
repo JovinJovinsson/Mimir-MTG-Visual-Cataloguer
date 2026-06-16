@@ -1,5 +1,6 @@
 import { app, BrowserWindow, nativeImage, session, webContents as electronWebContents } from 'electron';
 import { join } from 'node:path';
+import { AutoUpdaterManager } from './auto-updater.js';
 import { openCatalogueDb, defaultCataloguePath, type CatalogueDb } from './database.js';
 import {
   openScryfallIndexDb,
@@ -132,6 +133,9 @@ app.whenReady().then(() => {
   broadcastScanQueueDepth(() => electronWebContents.getAllWebContents(), processingQueue);
 
   createWindow();
+
+  const appUpdater = new AutoUpdaterManager();
+  appUpdater.checkForUpdates();
 
   // After window is ready, check for Scryfall updates silently.
   // Failure is intentionally swallowed — the app must still work offline.
