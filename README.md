@@ -1,5 +1,9 @@
 # Mimir
 
+<p align="center">
+  <img src="Mimir.png" alt="Mimir icon" width="128" />
+</p>
+
 A local-first desktop app for scanning and cataloguing Magic: The Gathering cards. Point your webcam at a card, Mimir identifies it via perceptual hash matching against the full Scryfall catalogue, and adds it to your collection — no internet required after the initial data download.
 
 ## Features
