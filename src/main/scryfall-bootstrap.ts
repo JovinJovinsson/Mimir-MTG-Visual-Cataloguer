@@ -1,4 +1,7 @@
-export type UserSelection = 'full';
+export type UserSelection =
+  | 'full'
+  | { kind: 'selected'; setCodes: string[] }
+  | { kind: 'standard'; standardSetCodes: string[] };
 
 export interface IndexState {
   hasIndex: boolean;
@@ -8,22 +11,32 @@ export interface IndexState {
 }
 
 export type DownloadPlan =
-  | { kind: 'fetch-bulk'; bulkType: 'default_cards' }
+  | { kind: 'fetch-bulk'; bulkType: 'default_cards'; allowedSets: string[] | null }
   | { kind: 'skip'; reason: string };
 
 export function planScryfallBootstrap(
   selection: UserSelection,
   state: IndexState,
 ): DownloadPlan {
-  if (selection !== 'full') {
-    throw new Error(
-      `planScryfallBootstrap: unsupported selection "${String(selection)}" (Selected/Standard land in slice 017)`,
-    );
+  if (selection === 'full') {
+    if (state.hasIndex && state.cardCount > 0) {
+      return { kind: 'skip', reason: 'scryfall index already populated' };
+    }
+    return { kind: 'fetch-bulk', bulkType: 'default_cards', allowedSets: null };
   }
+
+  if (selection.kind === 'selected') {
+    if (state.hasIndex && state.cardCount > 0) {
+      return { kind: 'skip', reason: 'scryfall index already populated' };
+    }
+    return { kind: 'fetch-bulk', bulkType: 'default_cards', allowedSets: selection.setCodes };
+  }
+
+  // standard
   if (state.hasIndex && state.cardCount > 0) {
     return { kind: 'skip', reason: 'scryfall index already populated' };
   }
-  return { kind: 'fetch-bulk', bulkType: 'default_cards' };
+  return { kind: 'fetch-bulk', bulkType: 'default_cards', allowedSets: selection.standardSetCodes };
 }
 
 export interface ScryfallBulkCard {
@@ -98,6 +111,7 @@ export interface InsertBatch {
 export interface IngestOptions {
   batchSize?: number;
   includeDigital?: boolean;
+  allowedSets?: string[] | null;
 }
 
 const DEFAULT_BATCH_SIZE = 1000;
@@ -108,12 +122,14 @@ export function planBulkIngest(
 ): InsertBatch[] {
   const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
   const includeDigital = options.includeDigital ?? false;
+  const allowedSets = options.allowedSets ? new Set(options.allowedSets) : null;
 
   const cards: ScryfallCardInsert[] = [];
   const setMap = new Map<string, ScryfallSetInsert>();
 
   for (const raw of payload) {
     if (!includeDigital && raw.digital) continue;
+    if (allowedSets && !allowedSets.has(raw.set)) continue;
 
     cards.push(normaliseCard(raw));
     if (!setMap.has(raw.set)) {

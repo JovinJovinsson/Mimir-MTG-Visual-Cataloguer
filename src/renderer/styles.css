@@ -2541,3 +2541,220 @@ tr.is-selected > td {
 }
 
 /* ── end Catalogue tile view ──────────────────────────────────── */
+
+/* ── Wizard: Selected sets step ───────────────────────────────── */
+
+.wizard-set-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.wizard-set-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.wizard-set-search {
+  flex: 1;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 9px;
+}
+
+.wizard-set-search:focus { outline: none; border-color: var(--accent); }
+
+.wizard-set-list {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-base);
+}
+
+.wizard-set-loading {
+  padding: 20px;
+  text-align: center;
+  color: var(--fg-muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.wizard-set-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.wizard-set-item:last-child { border-bottom: none; }
+
+.wizard-set-item:hover { background: var(--bg-elev); }
+
+.wizard-set-item input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.wizard-set-item-name { flex: 1; }
+
+.wizard-set-item-meta {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.wizard-set-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  gap: 10px;
+}
+
+.wizard-set-count {
+  font-size: 12px;
+}
+
+.wizard-set-footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn--ghost {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.btn--ghost:hover { border-color: var(--accent); color: var(--fg); }
+
+/* ── Add-set prompt ───────────────────────────────────────────── */
+
+.add-set-prompt {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 186, 0, 0.06);
+  border: 1px solid rgba(255, 186, 0, 0.35);
+  border-radius: var(--radius);
+}
+
+.add-set-prompt-msg {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  line-height: 1.4;
+}
+
+.add-set-prompt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.add-set-btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.add-set-btn--primary {
+  background: var(--accent);
+  color: #0f1115;
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.add-set-btn--primary:hover { background: var(--accent-strong); }
+
+.add-set-btn--secondary {
+  background: var(--bg-elev-2);
+  color: var(--fg);
+  border-color: var(--border);
+}
+
+.add-set-btn--secondary:hover { border-color: var(--accent); }
+
+.add-set-btn--ghost {
+  background: transparent;
+  color: var(--fg-muted);
+  border-color: var(--border);
+}
+
+.add-set-btn--ghost:hover { color: var(--fg); border-color: var(--fg-muted); }
+
+/* ── Auto-suggest toast ───────────────────────────────────────── */
+
+.set-suggest-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 320px;
+  z-index: 90;
+}
+
+.set-suggest-msg {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg);
+}
+
+.set-suggest-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.set-suggest-btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.set-suggest-btn--primary {
+  background: var(--accent);
+  color: #0f1115;
+  font-weight: 600;
+  border-color: var(--accent);
+}
+
+.set-suggest-btn--primary:hover { background: var(--accent-strong); }
+
+.set-suggest-btn--ghost {
+  background: transparent;
+  color: var(--fg-muted);
+  border-color: var(--border);
+}
+
+.set-suggest-btn--ghost:hover { color: var(--fg); }
+
+/* ── end 017 additions ────────────────────────────────────────── */

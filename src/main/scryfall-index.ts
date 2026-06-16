@@ -108,6 +108,15 @@ export interface ScryfallSetWithStatus {
   is_downloaded: number;
 }
 
+export interface ScryfallSetForWizard {
+  code: string;
+  name: string;
+  card_count: number;
+  released_at: string | null;
+  download_status: SetDownloadStatus;
+  is_downloaded: number;
+}
+
 export interface ScryfallCardCropRow {
   scryfall_id: string;
   image_art_crop_url: string | null;
@@ -139,6 +148,7 @@ export interface ScryfallIndexDb {
   autocompleteByName(query: string, limit: number): AutocompleteHit[];
   getCardByScryfallId(id: string): ScryfallIndexCard | null;
   listSetsWithStatus(): ScryfallSetWithStatus[];
+  listSetsForWizard(): ScryfallSetForWizard[];
   listSetCropRows(setCode: string): ScryfallCardCropRow[];
   getAllHashedCards(): HashedCard[];
   getAllHashedCardsWithCrop(): HashedCardWithCrop[];
@@ -263,6 +273,26 @@ function wrap(db: Database.Database): ScryfallIndexDb {
     ORDER BY s.name COLLATE NOCASE
   `);
 
+  const listSetsForWizardStmt = db.prepare<[], ScryfallSetForWizard>(`
+    SELECT
+      s.code AS code,
+      s.name AS name,
+      COALESCE(c.card_count, 0) AS card_count,
+      c.released_at AS released_at,
+      s.download_status AS download_status,
+      s.is_downloaded AS is_downloaded
+    FROM scryfall_sets s
+    LEFT JOIN (
+      SELECT
+        set_code,
+        COUNT(*) AS card_count,
+        MAX(released_at) AS released_at
+      FROM scryfall_cards
+      GROUP BY set_code
+    ) c ON c.set_code = s.code
+    ORDER BY c.released_at DESC NULLS LAST, s.name COLLATE NOCASE
+  `);
+
   const listSetCropRowsStmt = db.prepare<[string], ScryfallCardCropRow>(`
     SELECT scryfall_id, image_art_crop_url, phash, art_crop_path
     FROM scryfall_cards
@@ -352,6 +382,10 @@ function wrap(db: Database.Database): ScryfallIndexDb {
 
     listSetsWithStatus(): ScryfallSetWithStatus[] {
       return listSetsWithStatusStmt.all();
+    },
+
+    listSetsForWizard(): ScryfallSetForWizard[] {
+      return listSetsForWizardStmt.all();
     },
 
     listSetCropRows(setCode: string): ScryfallCardCropRow[] {

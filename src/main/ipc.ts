@@ -26,6 +26,9 @@ import {
   type BootstrapStartRequest,
   type BootstrapStartResponse,
   type BootstrapStatusDto,
+  type SetsListForWizardResponse,
+  type ReviewSaveWithoutSetRequest,
+  type ReviewSaveWithoutSetResponse,
   type CaptureRequest,
   type CaptureResponse,
   type CardMoveToCollectionRequest,
@@ -326,12 +329,32 @@ export function registerIpcHandlers(deps: IpcDeps): void {
   ipcMain.handle(
     IPC_CHANNELS.bootstrapStart,
     async (_event, req: BootstrapStartRequest): Promise<BootstrapStartResponse> => {
-      // Fire-and-forget but attach a catch so rejections don't become unhandled.
-      // Errors during the run are surfaced via progress events (phase === 'error').
-      bootstrap.start(req.selection).catch(() => {/* handled via progress events */});
+      const selection =
+        req.selection === 'full'
+          ? 'full' as const
+          : req.selection === 'selected'
+          ? { kind: 'selected' as const, setCodes: req.setCodes }
+          : { kind: 'standard' as const, standardSetCodes: [] };
+      bootstrap.start(selection).catch(() => {/* handled via progress events */});
       return { ok: true };
     },
   );
+
+  ipcMain.handle(IPC_CHANNELS.setsListForWizard, async (): Promise<SetsListForWizardResponse> => {
+    try {
+      const sets = index.listSetsForWizard().map((s) => ({
+        code: s.code,
+        name: s.name,
+        card_count: s.card_count,
+        released_at: s.released_at,
+        download_status: s.download_status,
+        is_downloaded: s.is_downloaded,
+      }));
+      return { ok: true, sets };
+    } catch (err) {
+      return { ok: false, error: errorMessage(err) };
+    }
+  });
 
   ipcMain.handle(IPC_CHANNELS.setsList, async (): Promise<SetsListResponse> => {
     try {
@@ -518,6 +541,56 @@ export function registerIpcHandlers(deps: IpcDeps): void {
               break;
           }
         }
+        broadcastReviewCount();
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.reviewSaveWithoutSet,
+    async (_event, req: ReviewSaveWithoutSetRequest): Promise<ReviewSaveWithoutSetResponse> => {
+      try {
+        const item = reviewQueueDb.getItemById(req.reviewId);
+        if (!item) return { ok: false, error: `Review item ${req.reviewId} not found` };
+
+        const card = index.getCardByScryfallId(req.scryfallId);
+        if (!card) return { ok: false, error: `Scryfall card ${req.scryfallId} not found in index` };
+
+        const inboxId = catalogue.inboxCollectionId();
+        const now = Date.now();
+
+        const insertAction: import('../shared/types.js').CatalogueAction = {
+          kind: 'insert',
+          row: {
+            scryfall_id: req.scryfallId,
+            name: card.name,
+            set_code: 'unknown',
+            set_name: 'Unknown',
+            collector_number: card.collector_number,
+            collection_id: inboxId,
+            foil: 'normal',
+            condition: 'NM',
+            language: 'EN',
+            quantity: 1,
+            price_at_first_scan_usd: card.price_usd,
+            notes: null,
+            needs_review: 1,
+            review_reasons: 'set_not_assigned',
+            first_seen_at: now,
+            last_seen_at: now,
+          },
+        };
+
+        const cardId = catalogue.executeAction(insertAction);
+
+        if (item.scanId != null) {
+          scanDb.updateScanCard(item.scanId, cardId);
+        }
+
+        reviewQueueDb.resolveItem(req.reviewId, req.scryfallId);
         broadcastReviewCount();
         return { ok: true };
       } catch (err) {

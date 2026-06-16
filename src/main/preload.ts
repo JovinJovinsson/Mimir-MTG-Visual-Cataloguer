@@ -23,6 +23,9 @@ import {
   type BootstrapStartRequest,
   type BootstrapStartResponse,
   type BootstrapStatusDto,
+  type SetsListForWizardResponse,
+  type ReviewSaveWithoutSetRequest,
+  type ReviewSaveWithoutSetResponse,
   type CaptureRequest,
   type CaptureResponse,
   type CardMoveToCollectionRequest,
@@ -185,6 +188,10 @@ const api: MimirApi = {
     ipcRenderer.invoke(IPC_CHANNELS.cardAddToReview, req),
   openExternal: (req: OpenExternalRequest): Promise<OpenExternalResponse> =>
     ipcRenderer.invoke(IPC_CHANNELS.openExternal, req),
+  setsListForWizard: (): Promise<SetsListForWizardResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.setsListForWizard),
+  reviewSaveWithoutSet: (req: ReviewSaveWithoutSetRequest): Promise<ReviewSaveWithoutSetResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.reviewSaveWithoutSet, req),
 };
 
 contextBridge.exposeInMainWorld('mimir', api);

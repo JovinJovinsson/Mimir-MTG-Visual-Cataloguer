@@ -47,6 +47,8 @@ export const IPC_CHANNELS = {
   backupRestore: 'backup:restore',
   backupAutoRun: 'backup:autoRun',
   backupChooseFolder: 'backup:chooseFolder',
+  setsListForWizard: 'sets:listForWizard',
+  reviewSaveWithoutSet: 'review:saveWithoutSet',
 } as const;
 
 export type ExportFormat = 'moxfield' | 'deckbox' | 'manabox' | 'mimir-native';
@@ -159,7 +161,10 @@ export interface BootstrapStatusDto {
   updatedAt: number;
 }
 
-export type BootstrapStartRequest = { selection: 'full' };
+export type BootstrapStartRequest =
+  | { selection: 'full' }
+  | { selection: 'selected'; setCodes: string[] }
+  | { selection: 'standard' };
 export type BootstrapStartResponse = { ok: true } | { ok: false; error: string };
 
 export type SetDownloadStatus = 'none' | 'downloading' | 'complete' | 'error';
@@ -321,6 +326,28 @@ export interface ScryfallUpdateAvailableDto {
   remoteUpdatedAt: string;
 }
 
+export interface ScryfallSetForWizard {
+  code: string;
+  name: string;
+  card_count: number;
+  released_at: string | null;
+  download_status: string;
+  is_downloaded: number;
+}
+
+export type SetsListForWizardResponse =
+  | { ok: true; sets: ScryfallSetForWizard[] }
+  | { ok: false; error: string };
+
+export interface ReviewSaveWithoutSetRequest {
+  reviewId: number;
+  scryfallId: string;
+}
+
+export type ReviewSaveWithoutSetResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
 export type BackupChooseFolderResponse =
   | { ok: true; cancelled?: false; folder: string }
   | { ok: true; cancelled: true; folder?: undefined }
@@ -429,6 +456,8 @@ export interface MimirApi {
   cardDelete(req: CardDeleteRequest): Promise<CardDeleteResponse>;
   cardAddToReview(req: CardAddToReviewRequest): Promise<CardAddToReviewResponse>;
   openExternal(req: OpenExternalRequest): Promise<OpenExternalResponse>;
+  setsListForWizard(): Promise<SetsListForWizardResponse>;
+  reviewSaveWithoutSet(req: ReviewSaveWithoutSetRequest): Promise<ReviewSaveWithoutSetResponse>;
 }
 
 declare global {

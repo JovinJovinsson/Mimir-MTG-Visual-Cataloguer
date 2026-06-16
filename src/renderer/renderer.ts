@@ -52,6 +52,14 @@ interface ReviewPanelDom {
   freeTextWrap?: HTMLDivElement;
   freeTextInput?: HTMLInputElement;
   freeTextList?: HTMLUListElement;
+  addSetPrompt?: HTMLDivElement;
+  addSetMsg?: HTMLParagraphElement;
+  addSetThisBtn?: HTMLButtonElement;
+  addSetAllBtn?: HTMLButtonElement;
+  addSetSaveBtn?: HTMLButtonElement;
+  addSetSkipBtn?: HTMLButtonElement;
+  isSetDownloaded?: (setCode: string) => boolean;
+  onSkippedWithSetHint?: (setCode: string, setName: string) => void;
   onItemActioned?: () => Promise<void>;
 }
 
@@ -225,6 +233,7 @@ class ReviewPanelController {
       this.dom.freeTextList.hidden = true;
     }
     if (this.dom.freeTextWrap) this.dom.freeTextWrap.hidden = false;
+    if (this.dom.addSetPrompt) this.dom.addSetPrompt.hidden = true;
 
     this.renderGallery(item);
     this.renderList(item);
@@ -395,8 +404,88 @@ class ReviewPanelController {
     this._freeTextSelected = hit;
     inp.value = `${hit.name} — ${hit.set_code.toUpperCase()} #${hit.collector_number}`;
     list.hidden = true;
-    // Enable confirm if no gallery candidate is selected
-    this.dom.btnConfirm.disabled = false;
+
+    const setDownloaded = this.dom.isSetDownloaded?.(hit.set_code) ?? true;
+    if (!setDownloaded && this.dom.addSetPrompt) {
+      this.showAddSetPrompt(hit);
+      // Don't enable confirm yet — user must decide
+    } else {
+      if (this.dom.addSetPrompt) this.dom.addSetPrompt.hidden = true;
+      this.dom.btnConfirm.disabled = false;
+    }
+  }
+
+  private showAddSetPrompt(hit: import('../shared/ipc.js').AutocompleteHitDto): void {
+    if (!this.dom.addSetPrompt || !this.dom.addSetMsg) return;
+    this.dom.addSetMsg.textContent =
+      `"${hit.set_name}" (${hit.set_code.toUpperCase()}) isn't downloaded yet. ` +
+      `Add it to enable visual recognition for this set?`;
+    this.dom.addSetPrompt.hidden = false;
+    this.dom.btnConfirm.disabled = true;
+
+    const cleanup = () => {
+      if (this.dom.addSetThisBtn) this.dom.addSetThisBtn.onclick = null;
+      if (this.dom.addSetAllBtn) this.dom.addSetAllBtn.onclick = null;
+      if (this.dom.addSetSaveBtn) this.dom.addSetSaveBtn.onclick = null;
+      if (this.dom.addSetSkipBtn) this.dom.addSetSkipBtn.onclick = null;
+    };
+
+    if (this.dom.addSetThisBtn) {
+      this.dom.addSetThisBtn.onclick = () => {
+        void window.mimir.setsToggleDownload({ setCode: hit.set_code, enabled: true });
+        if (this.dom.addSetPrompt) this.dom.addSetPrompt.hidden = true;
+        this.dom.btnConfirm.disabled = false;
+        cleanup();
+      };
+    }
+
+    if (this.dom.addSetAllBtn) {
+      this.dom.addSetAllBtn.onclick = () => {
+        // Trigger download for all sets this card name appears in (found via autocomplete hits)
+        const allSets = new Set(this._freeTextHits.map((h) => h.set_code));
+        for (const code of allSets) {
+          void window.mimir.setsToggleDownload({ setCode: code, enabled: true });
+        }
+        if (this.dom.addSetPrompt) this.dom.addSetPrompt.hidden = true;
+        this.dom.btnConfirm.disabled = false;
+        cleanup();
+      };
+    }
+
+    if (this.dom.addSetSaveBtn) {
+      this.dom.addSetSaveBtn.onclick = () => {
+        if (!this._currentItem) return;
+        void this.handleSaveWithoutSet(hit);
+        cleanup();
+      };
+    }
+
+    if (this.dom.addSetSkipBtn) {
+      this.dom.addSetSkipBtn.onclick = () => {
+        if (this.dom.addSetPrompt) this.dom.addSetPrompt.hidden = true;
+        this._freeTextSelected = null;
+        if (this.dom.freeTextInput) this.dom.freeTextInput.value = '';
+        this.dom.btnConfirm.disabled = this._selectedIndex < 0;
+        cleanup();
+      };
+    }
+  }
+
+  private async handleSaveWithoutSet(hit: import('../shared/ipc.js').AutocompleteHitDto): Promise<void> {
+    if (!this._currentItem) return;
+    if (this.dom.addSetPrompt) this.dom.addSetPrompt.hidden = true;
+    const res = await window.mimir.reviewSaveWithoutSet({
+      reviewId: this._currentItem.id,
+      scryfallId: hit.scryfall_id,
+    });
+    if (res.ok) {
+      if (this.dom.onItemActioned) {
+        await this.dom.onItemActioned();
+      } else {
+        await this.loadAndRender();
+        await refresh();
+      }
+    }
   }
 
   private async handleConfirm(): Promise<void> {
@@ -463,7 +552,16 @@ class ReviewPanelController {
 
   private async handleSkip(): Promise<void> {
     if (!this._currentItem) return;
+    // Emit a set hint for the auto-suggest toast
+    const topCandidate = this._freeTextSelected
+      ? { setCode: this._freeTextSelected.set_code, setName: this._freeTextSelected.set_name }
+      : this._currentItem.candidates[0]
+      ? { setCode: this._currentItem.candidates[0].setCode, setName: this._currentItem.candidates[0].setName }
+      : null;
     await window.mimir.reviewSkip({ reviewId: this._currentItem.id });
+    if (topCandidate && this.dom.onSkippedWithSetHint) {
+      this.dom.onSkippedWithSetHint(topCandidate.setCode, topCandidate.setName);
+    }
     if (this.dom.onItemActioned) {
       await this.dom.onItemActioned();
     } else {
@@ -510,6 +608,15 @@ const bannerFill = document.getElementById('bootstrap-banner-fill') as HTMLDivEl
 
 const wizardOverlay = document.getElementById('wizard-overlay') as HTMLDivElement;
 const wizardFullBtn = document.getElementById('wizard-full') as HTMLButtonElement;
+const wizardSelectedBtn = document.getElementById('wizard-selected') as HTMLButtonElement;
+const wizardStandardBtn = document.getElementById('wizard-standard') as HTMLButtonElement;
+const wizardStepScope = document.getElementById('wizard-step-scope') as HTMLDivElement;
+const wizardStepSets = document.getElementById('wizard-step-sets') as HTMLDivElement;
+const wizardSetSearch = document.getElementById('wizard-set-search') as HTMLInputElement;
+const wizardSetList = document.getElementById('wizard-set-list') as HTMLDivElement;
+const wizardSetCount = document.getElementById('wizard-set-count') as HTMLSpanElement;
+const wizardSetsBack = document.getElementById('wizard-sets-back') as HTMLButtonElement;
+const wizardSetsDownload = document.getElementById('wizard-sets-download') as HTMLButtonElement;
 const wizardProgress = document.getElementById('wizard-progress') as HTMLDivElement;
 const wizardPhaseLabel = document.getElementById('wizard-phase-label') as HTMLSpanElement;
 const wizardProgressCount = document.getElementById('wizard-progress-count') as HTMLSpanElement;
@@ -569,6 +676,14 @@ const reviewPagePanel = new ReviewPanelController({
   freeTextWrap: document.getElementById('review-free-text-wrap') as HTMLDivElement,
   freeTextInput: document.getElementById('review-free-text-input') as HTMLInputElement,
   freeTextList: document.getElementById('review-free-text-list') as HTMLUListElement,
+  addSetPrompt: document.getElementById('review-add-set-prompt') as HTMLDivElement,
+  addSetMsg: document.getElementById('review-add-set-msg') as HTMLParagraphElement,
+  addSetThisBtn: document.getElementById('review-add-set-this') as HTMLButtonElement,
+  addSetAllBtn: document.getElementById('review-add-set-all') as HTMLButtonElement,
+  addSetSaveBtn: document.getElementById('review-add-set-save') as HTMLButtonElement,
+  addSetSkipBtn: document.getElementById('review-add-set-skip') as HTMLButtonElement,
+  isSetDownloaded: (code) => setsCache.some((s) => s.code === code && s.is_downloaded === 1),
+  onSkippedWithSetHint: (code, name) => { onReviewSkippedWithSetHint(code, name); },
   onItemActioned: async () => {
     await loadReviewQueue();
     await refresh();
@@ -604,6 +719,14 @@ const slideOutPanel = new ReviewPanelController({
   freeTextWrap: document.getElementById('slide-free-text-wrap') as HTMLDivElement,
   freeTextInput: document.getElementById('slide-free-text-input') as HTMLInputElement,
   freeTextList: document.getElementById('slide-free-text-list') as HTMLUListElement,
+  addSetPrompt: document.getElementById('slide-add-set-prompt') as HTMLDivElement,
+  addSetMsg: document.getElementById('slide-add-set-msg') as HTMLParagraphElement,
+  addSetThisBtn: document.getElementById('slide-add-set-this') as HTMLButtonElement,
+  addSetAllBtn: document.getElementById('slide-add-set-all') as HTMLButtonElement,
+  addSetSaveBtn: document.getElementById('slide-add-set-save') as HTMLButtonElement,
+  addSetSkipBtn: document.getElementById('slide-add-set-skip') as HTMLButtonElement,
+  isSetDownloaded: (code) => setsCache.some((s) => s.code === code && s.is_downloaded === 1),
+  onSkippedWithSetHint: (code, name) => { onReviewSkippedWithSetHint(code, name); },
 });
 
 function openSlideOut(): void {
@@ -2048,16 +2171,21 @@ function applyStatusToWizard(s: BootstrapStatusDto): void {
   if (s.phase === 'idle') {
     wizardProgress.hidden = true;
     wizardError.hidden = true;
+    wizardStepScope.hidden = false;
     wizardOptions.hidden = false;
     return;
   }
   if (s.phase === 'error') {
     wizardProgress.hidden = true;
     wizardError.hidden = false;
+    wizardStepScope.hidden = false;
+    wizardStepSets.hidden = true;
     wizardOptions.hidden = false;
     wizardErrorMessage.textContent = s.error || 'Unknown error';
     return;
   }
+  wizardStepScope.hidden = true;
+  wizardStepSets.hidden = true;
   wizardOptions.hidden = true;
   wizardError.hidden = true;
   wizardProgress.hidden = false;
@@ -2085,28 +2213,134 @@ function hideWizard(): void {
 
 function showWizard(): void {
   wizardOverlay.hidden = false;
+  wizardStepScope.hidden = false;
+  wizardStepSets.hidden = true;
   wizardProgress.hidden = true;
   wizardError.hidden = true;
   wizardOptions.hidden = false;
 }
 
-async function startBootstrap(): Promise<void> {
+function showWizardProgress(): void {
+  wizardStepScope.hidden = true;
+  wizardStepSets.hidden = true;
   wizardOptions.hidden = true;
   wizardError.hidden = true;
   wizardProgress.hidden = false;
   wizardPhaseLabel.textContent = 'Connecting to Scryfall…';
   wizardProgressFill.style.width = '5%';
-  const res = await window.mimir.bootstrapStart({ selection: 'full' });
+}
+
+async function startBootstrap(req: import('../shared/ipc.js').BootstrapStartRequest): Promise<void> {
+  showWizardProgress();
+  const res = await window.mimir.bootstrapStart(req);
   if (!res.ok) {
     wizardProgress.hidden = true;
     wizardError.hidden = false;
     wizardErrorMessage.textContent = res.error;
+    wizardStepScope.hidden = false;
     wizardOptions.hidden = false;
   }
 }
 
-wizardFullBtn.addEventListener('click', () => { void startBootstrap(); });
-wizardRetry.addEventListener('click', () => { void startBootstrap(); });
+// ── Wizard: Selected sets step ─────────────────────────────────────────────
+
+interface WizardSetItem {
+  code: string;
+  name: string;
+  card_count: number;
+  released_at: string | null;
+}
+
+let wizardSetsData: WizardSetItem[] = [];
+let wizardSelectedSets = new Set<string>();
+
+function updateWizardSetCount(): void {
+  const n = wizardSelectedSets.size;
+  wizardSetCount.textContent = n === 0 ? '0 sets selected' : `${n} set${n === 1 ? '' : 's'} selected`;
+  wizardSetsDownload.disabled = n === 0;
+}
+
+function renderWizardSetList(filter: string): void {
+  wizardSetList.innerHTML = '';
+  const q = filter.trim().toLowerCase();
+  const shown = q ? wizardSetsData.filter((s) => s.name.toLowerCase().includes(q) || s.code.includes(q)) : wizardSetsData;
+  if (shown.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'wizard-set-loading';
+    p.textContent = q ? 'No sets match.' : 'No sets found.';
+    wizardSetList.appendChild(p);
+    return;
+  }
+  for (const s of shown) {
+    const row = document.createElement('div');
+    row.className = 'wizard-set-item';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = wizardSelectedSets.has(s.code);
+    cb.addEventListener('change', () => {
+      if (cb.checked) wizardSelectedSets.add(s.code);
+      else wizardSelectedSets.delete(s.code);
+      updateWizardSetCount();
+    });
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'wizard-set-item-name';
+    nameSpan.textContent = s.name;
+    const metaSpan = document.createElement('span');
+    metaSpan.className = 'wizard-set-item-meta';
+    metaSpan.textContent = `${s.code.toUpperCase()} · ${s.card_count} cards`;
+    row.addEventListener('click', (e) => {
+      if (e.target === cb) return;
+      cb.checked = !cb.checked;
+      if (cb.checked) wizardSelectedSets.add(s.code);
+      else wizardSelectedSets.delete(s.code);
+      updateWizardSetCount();
+    });
+    row.appendChild(cb);
+    row.appendChild(nameSpan);
+    row.appendChild(metaSpan);
+    wizardSetList.appendChild(row);
+  }
+}
+
+async function openWizardSelectedSets(): Promise<void> {
+  wizardStepScope.hidden = true;
+  wizardStepSets.hidden = false;
+  wizardSelectedSets.clear();
+  updateWizardSetCount();
+  wizardSetSearch.value = '';
+  wizardSetList.innerHTML = '<p class="wizard-set-loading">Loading sets…</p>';
+  const res = await window.mimir.setsListForWizard();
+  if (!res.ok) {
+    wizardSetList.innerHTML = '<p class="wizard-set-loading">Failed to load sets.</p>';
+    return;
+  }
+  wizardSetsData = res.sets.map((s) => ({
+    code: s.code,
+    name: s.name,
+    card_count: s.card_count,
+    released_at: s.released_at,
+  }));
+  renderWizardSetList('');
+}
+
+wizardSetSearch.addEventListener('input', () => {
+  renderWizardSetList(wizardSetSearch.value);
+});
+
+wizardSetsBack.addEventListener('click', () => {
+  wizardStepSets.hidden = true;
+  wizardStepScope.hidden = false;
+});
+
+wizardSetsDownload.addEventListener('click', () => {
+  const setCodes = Array.from(wizardSelectedSets);
+  void startBootstrap({ selection: 'selected', setCodes });
+});
+
+wizardFullBtn.addEventListener('click', () => { void startBootstrap({ selection: 'full' }); });
+wizardSelectedBtn.addEventListener('click', () => { void openWizardSelectedSets(); });
+wizardStandardBtn.addEventListener('click', () => { void startBootstrap({ selection: 'standard' }); });
+wizardRetry.addEventListener('click', () => { void startBootstrap({ selection: 'full' }); });
 wizardClose.addEventListener('click', () => { hideWizard(); void refresh(); });
 
 window.mimir.onBootstrapProgress((status) => {
@@ -2906,3 +3140,54 @@ backupRunNowBtn.addEventListener('click', async () => {
     backupRunNowBtn.textContent = 'Back up now';
   }
 });
+
+// ── Auto-suggest set toast ─────────────────────────────────────────────────────
+
+const setSuggestToast = document.getElementById('set-suggest-toast') as HTMLDivElement;
+const setSuggestMsg = document.getElementById('set-suggest-msg') as HTMLSpanElement;
+const setSuggestAdd = document.getElementById('set-suggest-add') as HTMLButtonElement;
+const setSuggestDismiss = document.getElementById('set-suggest-dismiss') as HTMLButtonElement;
+
+const SET_SUGGEST_THRESHOLD = 5;
+interface SkippedSetHint { setCode: string; setName: string; }
+const skippedSetHints: SkippedSetHint[] = [];
+let setSuggestDismissedCode: string | null = null;
+
+function checkSetSuggestion(): void {
+  if (setSuggestToast && !setSuggestToast.hidden) return;
+  const counts = new Map<string, { setName: string; count: number }>();
+  for (const h of skippedSetHints) {
+    const e = counts.get(h.setCode);
+    if (e) e.count++;
+    else counts.set(h.setCode, { setName: h.setName, count: 1 });
+  }
+  let best: { setCode: string; setName: string; count: number } | null = null;
+  for (const [code, { setName, count }] of counts) {
+    if (code === setSuggestDismissedCode) continue;
+    if (count >= SET_SUGGEST_THRESHOLD && (!best || count > best.count)) {
+      best = { setCode: code, setName, count };
+    }
+  }
+  if (!best) return;
+  setSuggestMsg.textContent =
+    `You've flagged ${best.count} cards likely from "${best.setName}" — add the set?`;
+  setSuggestToast.dataset['suggestCode'] = best.setCode;
+  setSuggestToast.hidden = false;
+}
+
+setSuggestAdd.addEventListener('click', () => {
+  const code = setSuggestToast.dataset['suggestCode'];
+  if (code) void window.mimir.setsToggleDownload({ setCode: code, enabled: true });
+  setSuggestToast.hidden = true;
+});
+
+setSuggestDismiss.addEventListener('click', () => {
+  const code = setSuggestToast.dataset['suggestCode'];
+  if (code) setSuggestDismissedCode = code;
+  setSuggestToast.hidden = true;
+});
+
+function onReviewSkippedWithSetHint(setCode: string, setName: string): void {
+  skippedSetHints.push({ setCode, setName });
+  checkSetSuggestion();
+}

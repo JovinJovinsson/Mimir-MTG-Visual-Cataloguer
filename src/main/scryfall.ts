@@ -51,6 +51,28 @@ function parsePrice(raw: string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+export async function fetchStandardSetCodes(fetchImpl: typeof fetch = fetch): Promise<string[]> {
+  const setCodes = new Set<string>();
+  let url: string | null =
+    'https://api.scryfall.com/cards/search?q=is%3Astandard&unique=art&format=json';
+
+  while (url) {
+    const res = await fetchImpl(url, { headers: { 'User-Agent': USER_AGENT, Accept: ACCEPT } });
+    if (!res.ok) {
+      throw new ScryfallError(`Standard sets fetch returned ${res.status}`, res.status);
+    }
+    const data = (await res.json()) as {
+      data: Array<{ set: string }>;
+      has_more: boolean;
+      next_page?: string;
+    };
+    for (const card of data.data) setCodes.add(card.set);
+    url = data.has_more ? (data.next_page ?? null) : null;
+  }
+
+  return Array.from(setCodes);
+}
+
 export async function fetchScryfallCardById(
   id: string,
   fetchImpl: typeof fetch = fetch,

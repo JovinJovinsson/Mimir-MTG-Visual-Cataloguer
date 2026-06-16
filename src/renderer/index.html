@@ -455,6 +455,17 @@
               </div>
             </div>
 
+            <!-- Add-set prompt (shown when free-text selects a card from an undownloaded set) -->
+            <div id="review-add-set-prompt" class="add-set-prompt" hidden>
+              <p class="add-set-prompt-msg" id="review-add-set-msg"></p>
+              <div class="add-set-prompt-actions">
+                <button id="review-add-set-this" class="add-set-btn add-set-btn--primary">Add this set</button>
+                <button id="review-add-set-all" class="add-set-btn add-set-btn--secondary">Add all sets</button>
+                <button id="review-add-set-save" class="add-set-btn add-set-btn--secondary">Save without set</button>
+                <button id="review-add-set-skip" class="add-set-btn add-set-btn--ghost">Skip</button>
+              </div>
+            </div>
+
             <!-- Field corrections (shown for low_confidence_field items) -->
             <div id="review-field-corrections" class="review-field-corrections" hidden>
               <div class="review-field-correction-row" id="review-field-foil-row" hidden>
@@ -677,6 +688,17 @@
             </div>
           </div>
 
+          <!-- Add-set prompt (shown when free-text selects a card from an undownloaded set) -->
+          <div id="slide-add-set-prompt" class="add-set-prompt" hidden>
+            <p class="add-set-prompt-msg" id="slide-add-set-msg"></p>
+            <div class="add-set-prompt-actions">
+              <button id="slide-add-set-this" class="add-set-btn add-set-btn--primary">Add this set</button>
+              <button id="slide-add-set-all" class="add-set-btn add-set-btn--secondary">Add all sets</button>
+              <button id="slide-add-set-save" class="add-set-btn add-set-btn--secondary">Save without set</button>
+              <button id="slide-add-set-skip" class="add-set-btn add-set-btn--ghost">Skip</button>
+            </div>
+          </div>
+
           <!-- Field corrections (shown for low_confidence_field items) -->
           <div id="slide-field-corrections" class="review-field-corrections" hidden>
             <div class="review-field-correction-row" id="slide-field-foil-row" hidden>
@@ -716,24 +738,45 @@
         <header>
           <h2 id="wizard-title">Welcome to Mimir</h2>
         </header>
-        <p class="wizard-blurb">
-          Mimir needs Scryfall's card data to recognise and catalogue cards.
-          Pick how much you want to load now — you can change this later.
-        </p>
 
-        <div class="wizard-options">
-          <button class="wizard-option wizard-option--primary" id="wizard-full">
-            <span class="opt-title">Full library</span>
-            <span class="opt-sub">Every Magic printing (~450 MB, a few minutes)</span>
-          </button>
-          <button class="wizard-option wizard-option--disabled" disabled>
-            <span class="opt-title">Selected sets</span>
-            <span class="opt-sub">Pick the sets you care about <em>(coming in slice 017)</em></span>
-          </button>
-          <button class="wizard-option wizard-option--disabled" disabled>
-            <span class="opt-title">Standard only</span>
-            <span class="opt-sub">Just the current Standard rotation <em>(coming in slice 017)</em></span>
-          </button>
+        <!-- Step 1: pick download scope -->
+        <div id="wizard-step-scope">
+          <p class="wizard-blurb">
+            Mimir needs Scryfall's card data to recognise and catalogue cards.
+            Pick how much you want to load now — you can change this later.
+          </p>
+          <div class="wizard-options">
+            <button class="wizard-option wizard-option--primary" id="wizard-full">
+              <span class="opt-title">Full library</span>
+              <span class="opt-sub">Every Magic printing (~450 MB, a few minutes)</span>
+            </button>
+            <button class="wizard-option" id="wizard-selected">
+              <span class="opt-title">Selected sets</span>
+              <span class="opt-sub">Pick the sets you own</span>
+            </button>
+            <button class="wizard-option" id="wizard-standard">
+              <span class="opt-title">Standard only</span>
+              <span class="opt-sub">Just the current Standard rotation (auto-detected)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Step 2: set checklist (Selected sets path) -->
+        <div id="wizard-step-sets" hidden>
+          <header class="wizard-set-header">
+            <h3 class="wizard-set-title">Choose your sets</h3>
+            <input id="wizard-set-search" class="wizard-set-search" type="text" placeholder="Search sets…" autocomplete="off" />
+          </header>
+          <div id="wizard-set-list" class="wizard-set-list">
+            <p class="wizard-set-loading">Loading sets…</p>
+          </div>
+          <div class="wizard-set-footer">
+            <span id="wizard-set-count" class="wizard-set-count muted">0 sets selected</span>
+            <div class="wizard-set-footer-actions">
+              <button id="wizard-sets-back" class="btn btn--ghost">Back</button>
+              <button id="wizard-sets-download" class="btn btn--primary" disabled>Download selected</button>
+            </div>
+          </div>
         </div>
 
         <div id="wizard-progress" class="wizard-progress" hidden>
@@ -750,6 +793,15 @@
           <span id="wizard-error-message"></span>
           <button class="wizard-retry" id="wizard-retry">Try again</button>
         </div>
+      </div>
+    </div>
+
+    <!-- Auto-suggest toast -->
+    <div id="set-suggest-toast" class="set-suggest-toast" hidden role="status" aria-live="polite">
+      <span id="set-suggest-msg" class="set-suggest-msg"></span>
+      <div class="set-suggest-actions">
+        <button id="set-suggest-add" class="set-suggest-btn set-suggest-btn--primary">Add set</button>
+        <button id="set-suggest-dismiss" class="set-suggest-btn set-suggest-btn--ghost">Dismiss</button>
       </div>
     </div>
 

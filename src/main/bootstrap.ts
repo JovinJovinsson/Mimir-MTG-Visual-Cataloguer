@@ -7,6 +7,7 @@ import {
 } from './scryfall-bootstrap.js';
 import type { ScryfallIndexDb } from './scryfall-index.js';
 import type { BulkDataManifest } from './scryfall-bulk.js';
+import { fetchStandardSetCodes } from './scryfall.js';
 
 export type BootstrapPhase =
   | 'idle'
@@ -35,6 +36,7 @@ export interface BootstrapDeps {
   index: ScryfallIndexDb;
   fetchManifest: (bulkType: 'default_cards') => Promise<BulkDataManifest>;
   fetchBulk: (downloadUri: string, onProgress: DownloadProgressFn) => Promise<ScryfallBulkCard[]>;
+  fetchStandardSetCodes?: () => Promise<string[]>;
   now?: () => number;
   batchSize?: number;
 }
@@ -81,7 +83,15 @@ export class BootstrapOrchestrator extends EventEmitter {
     this.downloadedBytes = 0;
 
     try {
-      const plan = planScryfallBootstrap(selection, this.deps.index.getIndexState());
+      // Resolve standard set codes before planning (network call)
+      let resolvedSelection = selection;
+      if (selection !== 'full' && selection.kind === 'standard') {
+        const standardFetch = this.deps.fetchStandardSetCodes ?? fetchStandardSetCodes;
+        const standardSetCodes = await standardFetch();
+        resolvedSelection = { kind: 'standard', standardSetCodes };
+      }
+
+      const plan = planScryfallBootstrap(resolvedSelection, this.deps.index.getIndexState());
       if (plan.kind === 'skip') {
         this.setPhase('done');
         return;
@@ -104,7 +114,10 @@ export class BootstrapOrchestrator extends EventEmitter {
       this.totalCards = cards.length;
 
       this.setPhase('ingesting');
-      const batches = planBulkIngest(cards, { batchSize: this.deps.batchSize ?? 1000 });
+      const batches = planBulkIngest(cards, {
+        batchSize: this.deps.batchSize ?? 1000,
+        allowedSets: plan.allowedSets,
+      });
       for (const batch of batches) {
         this.deps.index.ingestBatches([batch]);
         this.ingestedCards += batch.cards.length;

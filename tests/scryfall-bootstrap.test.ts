@@ -16,7 +16,7 @@ const emptyState: IndexState = {
 describe('planScryfallBootstrap', () => {
   it('plans a full-library bulk fetch when no index exists yet', () => {
     const plan = planScryfallBootstrap('full', emptyState);
-    expect(plan).toEqual({ kind: 'fetch-bulk', bulkType: 'default_cards' });
+    expect(plan).toEqual({ kind: 'fetch-bulk', bulkType: 'default_cards', allowedSets: null });
   });
 
   it('plans a fetch even when the DB file exists but no cards are present', () => {
@@ -39,10 +39,12 @@ describe('planScryfallBootstrap', () => {
     expect(plan.kind).toBe('skip');
   });
 
-  it('throws on an unsupported selection (Selected/Standard come in 017)', () => {
-    expect(() =>
-      planScryfallBootstrap('selected' as unknown as 'full', emptyState),
-    ).toThrow(/unsupported/i);
+  it('selected selection returns fetch-bulk with set filter (slice 017)', () => {
+    const plan = planScryfallBootstrap({ kind: 'selected', setCodes: ['dmu'] }, emptyState);
+    expect(plan.kind).toBe('fetch-bulk');
+    if (plan.kind === 'fetch-bulk') {
+      expect(plan.allowedSets).toEqual(['dmu']);
+    }
   });
 });
 
