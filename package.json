@@ -35,7 +35,7 @@
     "publish": {
       "provider": "github",
       "owner": "JovinJovinsson",
-      "repo": "mimir"
+      "repo": "Mimir-MTG-Visual-Cataloguer"
     },
     "afterSign": "build/afterSign.js",
     "mac": {
