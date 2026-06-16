@@ -376,6 +376,9 @@ const form = document.getElementById('add-card-form') as HTMLFormElement;
 const input = document.getElementById('card-name-input') as HTMLInputElement;
 const submitButton = form.querySelector('button[type="submit"]') as HTMLButtonElement;
 const tableBody = document.getElementById('catalogue-body') as HTMLTableSectionElement;
+const catalogueTilesEl = document.getElementById('catalogue-tiles') as HTMLDivElement;
+const catalogueTableWrap = document.getElementById('catalogue-table-wrap') as HTMLDivElement;
+const viewModeBtns = document.querySelectorAll<HTMLButtonElement>('.view-mode-btn');
 const statusEl = document.getElementById('status') as HTMLDivElement;
 const scannerRow = document.getElementById('scanner-row') as HTMLLIElement;
 const scannerGate = document.getElementById('scanner-gate') as HTMLSpanElement;
@@ -991,26 +994,163 @@ function renderEmpty(): void {
   tableBody.appendChild(tr);
 }
 
-function renderCards(cards: CardForRenderer[]): void {
+function renderTile(card: CardForRenderer, idx: number): HTMLDivElement {
+  const tile = document.createElement('div');
+  tile.className = 'tile-card';
+  tile.dataset['cardId'] = String(card.id);
+  tile.dataset['rowIdx'] = String(idx);
+  if (card.needs_review) tile.classList.add('tile-needs-review');
+  if (selectedCardIds.has(card.id)) tile.classList.add('is-selected');
+
+  if (card.art_crop_path) {
+    const img = document.createElement('img');
+    img.className = 'tile-card__img';
+    img.src = `file://${card.art_crop_path}`;
+    img.alt = card.name;
+    img.loading = 'lazy';
+    tile.appendChild(img);
+  } else {
+    const placeholder = document.createElement('div');
+    placeholder.className = 'tile-card__placeholder';
+    const icon = document.createElement('svg');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.setAttribute('fill', 'none');
+    icon.setAttribute('stroke', 'currentColor');
+    icon.setAttribute('stroke-width', '1');
+    icon.className = 'tile-card__placeholder-icon';
+    icon.innerHTML = '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>';
+    placeholder.appendChild(icon);
+    tile.appendChild(placeholder);
+  }
+
+  const ring = document.createElement('div');
+  ring.className = 'tile-card__select-ring';
+  tile.appendChild(ring);
+
+  if (card.needs_review) {
+    const badge = document.createElement('div');
+    badge.className = 'tile-card__review-badge';
+    badge.textContent = 'Review';
+    tile.appendChild(badge);
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'tile-card__overlay';
+
+  const name = document.createElement('div');
+  name.className = 'tile-card__name';
+  name.textContent = card.name;
+  overlay.appendChild(name);
+
+  const meta = document.createElement('div');
+  meta.className = 'tile-card__meta';
+
+  const setSpan = document.createElement('span');
+  setSpan.className = 'tile-card__set';
+  setSpan.textContent = card.set_code;
+  meta.appendChild(setSpan);
+
+  const qty = document.createElement('span');
+  qty.className = 'tile-card__qty';
+  qty.textContent = `×${card.quantity}`;
+  meta.appendChild(qty);
+
+  overlay.appendChild(meta);
+  tile.appendChild(overlay);
+
+  tile.addEventListener('click', (e) => {
+    handleCardCheckboxClick(card.id, idx, e.shiftKey);
+  });
+
+  tile.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    showCardContextMenu(card, e.clientX, e.clientY);
+  });
+
+  return tile;
+}
+
+function renderTilesView(cards: CardForRenderer[]): void {
+  catalogueTilesEl.innerHTML = '';
   if (cards.length === 0) {
-    renderEmpty();
+    const empty = document.createElement('div');
+    empty.className = 'tile-empty';
+    empty.textContent = 'No cards yet — add one by name above.';
+    catalogueTilesEl.appendChild(empty);
     return;
   }
-  const sorted = sortCards(cards, sortState);
-  tableBody.innerHTML = '';
-  sorted.forEach((card, idx) => {
-    const tr = renderRow(card, idx);
-    tr.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      showCardContextMenu(card, e.clientX, e.clientY);
-    });
-    tableBody.appendChild(tr);
+  cards.forEach((card, idx) => {
+    catalogueTilesEl.appendChild(renderTile(card, idx));
   });
+}
+
+function renderCards(cards: CardForRenderer[]): void {
+  const sorted = cards.length === 0 ? [] : sortCards(cards, sortState);
+  currentVisibleCards = sorted;
+  if (viewMode === 'tile') {
+    tableBody.innerHTML = '';
+    catalogueTilesEl.innerHTML = '';
+    renderTilesView(sorted);
+  } else {
+    catalogueTilesEl.innerHTML = '';
+    if (sorted.length === 0) {
+      renderEmpty();
+    } else {
+      tableBody.innerHTML = '';
+      sorted.forEach((card, idx) => {
+        const tr = renderRow(card, idx);
+        tr.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          showCardContextMenu(card, e.clientX, e.clientY);
+        });
+        tableBody.appendChild(tr);
+      });
+    }
+  }
   updateSelectionUI();
 }
 
 let allCards: CardForRenderer[] = [];
 let searchQuery = '';
+let currentVisibleCards: CardForRenderer[] = [];
+
+// ── View mode (table / tile) ──────────────────────────────────────────────────
+
+const VIEW_MODE_KEY = 'catalogue.viewMode';
+type ViewMode = 'table' | 'tile';
+let viewMode: ViewMode = 'table';
+
+function applyViewMode(): void {
+  const isTile = viewMode === 'tile';
+  catalogueTableWrap.hidden = isTile;
+  catalogueTilesEl.hidden = !isTile;
+  for (const btn of viewModeBtns) {
+    btn.classList.toggle('is-active', btn.dataset['view'] === viewMode);
+  }
+}
+
+async function loadViewMode(): Promise<void> {
+  const res = await window.mimir.settingsGet({ key: VIEW_MODE_KEY });
+  if (res.ok && (res.value === 'table' || res.value === 'tile')) {
+    viewMode = res.value as ViewMode;
+  }
+  applyViewMode();
+}
+
+async function saveViewMode(): Promise<void> {
+  await window.mimir.settingsSet({ key: VIEW_MODE_KEY, value: viewMode });
+}
+
+for (const btn of viewModeBtns) {
+  btn.addEventListener('click', () => {
+    const v = btn.dataset['view'] as ViewMode;
+    if (v === viewMode) return;
+    viewMode = v;
+    applyViewMode();
+    void saveViewMode();
+    applySearch();
+  });
+}
 
 // ── Sort state ────────────────────────────────────────────────────────────────
 
@@ -1105,9 +1245,22 @@ function updateSelectionUI(): void {
 }
 
 function getCurrentVisibleCards(): CardForRenderer[] {
+  return currentVisibleCards;
+}
+
+function syncSelectionToDom(): void {
   const rows = tableBody.querySelectorAll<HTMLTableRowElement>('tr[data-card-id]');
-  const ids = new Set(Array.from(rows).map((r) => Number(r.dataset['cardId'])));
-  return allCards.filter((c) => ids.has(c.id));
+  for (const row of rows) {
+    const id = Number(row.dataset['cardId']);
+    const cb = row.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    if (cb) cb.checked = selectedCardIds.has(id);
+    row.classList.toggle('is-selected', selectedCardIds.has(id));
+  }
+  const tiles = catalogueTilesEl.querySelectorAll<HTMLDivElement>('div[data-card-id]');
+  for (const tile of tiles) {
+    const id = Number(tile.dataset['cardId']);
+    tile.classList.toggle('is-selected', selectedCardIds.has(id));
+  }
 }
 
 function handleCardCheckboxClick(cardId: number, rowIdx: number, shiftKey: boolean): void {
@@ -1128,14 +1281,7 @@ function handleCardCheckboxClick(cardId: number, rowIdx: number, shiftKey: boole
     else selectedCardIds.add(cardId);
     lastClickedCatalogueIdx = rowIdx;
   }
-  // Re-render checkboxes in visible rows
-  const rows = tableBody.querySelectorAll<HTMLTableRowElement>('tr[data-card-id]');
-  for (const row of rows) {
-    const id = Number(row.dataset['cardId']);
-    const cb = row.querySelector<HTMLInputElement>('input[type="checkbox"]');
-    if (cb) cb.checked = selectedCardIds.has(id);
-    row.classList.toggle('is-selected', selectedCardIds.has(id));
-  }
+  syncSelectionToDom();
   updateSelectionUI();
 }
 
@@ -1146,13 +1292,7 @@ catalogueSelectAll.addEventListener('change', () => {
   } else {
     visibleCards.forEach((c) => selectedCardIds.delete(c.id));
   }
-  const rows = tableBody.querySelectorAll<HTMLTableRowElement>('tr[data-card-id]');
-  for (const row of rows) {
-    const id = Number(row.dataset['cardId']);
-    const cb = row.querySelector<HTMLInputElement>('input[type="checkbox"]');
-    if (cb) cb.checked = selectedCardIds.has(id);
-    row.classList.toggle('is-selected', selectedCardIds.has(id));
-  }
+  syncSelectionToDom();
   updateSelectionUI();
 });
 
@@ -2063,6 +2203,7 @@ void (async () => {
     applyStatusToBanner(status);
   }
   await refreshCollections();
+  await loadViewMode();
   await loadSortPref();
   await refresh();
   await refreshSets();

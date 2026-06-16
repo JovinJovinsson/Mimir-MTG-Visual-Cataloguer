@@ -186,6 +186,25 @@
                   </div>
                 </div>
               </div>
+              <div class="view-mode-toggle" id="view-mode-toggle" role="group" aria-label="View mode">
+                <button class="view-mode-btn is-active" id="view-mode-table" data-view="table" title="Table view">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                    <rect x="1" y="1" width="12" height="2.5" rx="0.5" fill="currentColor"/>
+                    <rect x="1" y="5.5" width="12" height="2.5" rx="0.5" fill="currentColor"/>
+                    <rect x="1" y="10" width="12" height="2.5" rx="0.5" fill="currentColor"/>
+                  </svg>
+                  Table
+                </button>
+                <button class="view-mode-btn" id="view-mode-tile" data-view="tile" title="Tile view">
+                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                    <rect x="1" y="1" width="5.5" height="5.5" rx="0.75" fill="currentColor"/>
+                    <rect x="7.5" y="1" width="5.5" height="5.5" rx="0.75" fill="currentColor"/>
+                    <rect x="1" y="7.5" width="5.5" height="5.5" rx="0.75" fill="currentColor"/>
+                    <rect x="7.5" y="7.5" width="5.5" height="5.5" rx="0.75" fill="currentColor"/>
+                  </svg>
+                  Tiles
+                </button>
+              </div>
               <button id="catalogue-export-btn" class="btn btn--secondary">Export…</button>
             </div>
           </header>
@@ -211,7 +230,8 @@
             <div class="progress-bar"><div class="progress-bar-fill" id="bootstrap-banner-fill"></div></div>
           </div>
 
-          <div class="table-wrap">
+          <div class="catalogue-view-wrap">
+          <div class="table-wrap" id="catalogue-table-wrap">
             <table id="catalogue-table">
               <thead>
                 <tr>
@@ -233,6 +253,8 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+          <div id="catalogue-tiles" class="catalogue-tiles" hidden></div>
           </div>
         </section>
 
