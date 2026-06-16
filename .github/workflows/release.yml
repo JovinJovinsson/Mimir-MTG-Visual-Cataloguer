@@ -33,13 +33,15 @@ jobs:
 
       - name: Package & publish (macOS)
         env:
-          CSC_LINK: ${{ secrets.APPLE_CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CSC_KEY_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --mac --publish always
+          _CSC_LINK: ${{ secrets.APPLE_CSC_LINK }}
+          _CSC_KEY_PASSWORD: ${{ secrets.APPLE_CSC_KEY_PASSWORD }}
+        run: |
+          [ -n "$_CSC_LINK" ] && export CSC_LINK="$_CSC_LINK" CSC_KEY_PASSWORD="$_CSC_KEY_PASSWORD"
+          npx electron-builder --mac --publish always
 
   build-windows:
     runs-on: windows-latest
