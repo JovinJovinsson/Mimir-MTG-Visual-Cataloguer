@@ -38,6 +38,10 @@ export const IPC_CHANNELS = {
   scryfallCheckUpdate: 'scryfall:checkUpdate',
   scryfallRefresh: 'scryfall:refresh',
   scryfallUpdateAvailable: 'scryfall:updateAvailable',
+  backupExport: 'backup:export',
+  backupRestore: 'backup:restore',
+  backupAutoRun: 'backup:autoRun',
+  backupChooseFolder: 'backup:chooseFolder',
 } as const;
 
 export type ExportFormat = 'moxfield' | 'deckbox' | 'manabox' | 'mimir-native';
@@ -312,6 +316,23 @@ export interface ScryfallUpdateAvailableDto {
   remoteUpdatedAt: string;
 }
 
+export type BackupChooseFolderResponse =
+  | { ok: true; cancelled?: false; folder: string }
+  | { ok: true; cancelled: true; folder?: undefined }
+  | { ok: false; error: string };
+
+export type BackupExportResponse =
+  | { ok: true; savedPath: string | null }
+  | { ok: false; error: string };
+
+export type BackupRestoreResponse =
+  | { ok: true; message: string }
+  | { ok: false; error: string };
+
+export type BackupAutoRunResponse =
+  | { ok: true; savedPath: string }
+  | { ok: false; error: string };
+
 export interface MimirApi {
   exportCsv(req: ExportCsvRequest): Promise<ExportCsvResponse>;
   reviewConfirmFieldCorrections(req: ReviewConfirmFieldCorrectionsRequest): Promise<ReviewConfirmFieldCorrectionsResponse>;
@@ -348,6 +369,10 @@ export interface MimirApi {
   scryfallCheckUpdate(): Promise<ScryfallCheckUpdateResponse>;
   scryfallRefresh(): Promise<ScryfallRefreshResponse>;
   onScryfallUpdateAvailable(cb: (event: ScryfallUpdateAvailableDto) => void): () => void;
+  backupChooseFolder(): Promise<BackupChooseFolderResponse>;
+  backupExport(): Promise<BackupExportResponse>;
+  backupRestore(): Promise<BackupRestoreResponse>;
+  backupAutoRun(): Promise<BackupAutoRunResponse>;
 }
 
 declare global {

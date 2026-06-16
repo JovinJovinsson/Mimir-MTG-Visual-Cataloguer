@@ -51,6 +51,9 @@
               <span class="label">Manage Sets</span>
               <span class="count" id="sets-count">—</span>
             </li>
+            <li class="nav-item" data-page="settings">
+              <span class="label">Settings</span>
+            </li>
           </ul>
         </nav>
       </aside>
@@ -436,6 +439,90 @@
                 <tr class="empty-row"><td colspan="6">No sets indexed yet.</td></tr>
               </tbody>
             </table>
+          </div>
+        </section>
+
+        <section id="page-settings" class="page" data-page="settings" hidden>
+          <header class="main-header">
+            <h1>Settings</h1>
+          </header>
+
+          <!-- Backup section -->
+          <div class="settings-section">
+            <h2 class="settings-section-title">Backup</h2>
+
+            <div class="settings-group">
+              <div class="settings-row">
+                <div class="settings-row-info">
+                  <span class="settings-label">Export now</span>
+                  <span class="settings-hint">Download a zip of your catalogue and scan thumbnails.</span>
+                </div>
+                <button id="backup-export-btn" class="btn btn--primary">Export backup…</button>
+              </div>
+
+              <div class="settings-row">
+                <div class="settings-row-info">
+                  <span class="settings-label">Restore from backup</span>
+                  <span class="settings-hint">Replace the current catalogue with a previously exported backup. App will need to restart.</span>
+                </div>
+                <button id="backup-restore-btn" class="btn btn--secondary">Restore backup…</button>
+              </div>
+            </div>
+
+            <div class="settings-group settings-group--auto">
+              <h3 class="settings-subgroup-title">Auto-backup</h3>
+
+              <div class="settings-row">
+                <div class="settings-row-info">
+                  <span class="settings-label">Backup folder</span>
+                  <span class="settings-hint">Where auto-backups are saved. Works great with iCloud Drive or Dropbox.</span>
+                </div>
+                <div class="settings-backup-folder-wrap">
+                  <span id="backup-folder-display" class="settings-folder-path muted">Not set</span>
+                  <button id="backup-folder-btn" class="btn btn--secondary">Choose folder…</button>
+                </div>
+              </div>
+
+              <div class="settings-row">
+                <div class="settings-row-info">
+                  <span class="settings-label">Frequency</span>
+                  <span class="settings-hint">How often to create an auto-backup.</span>
+                </div>
+                <select id="backup-cadence-select" class="settings-select">
+                  <option value="on-quit">On quit</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly" selected>Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </div>
+
+              <div class="settings-row">
+                <div class="settings-row-info">
+                  <span class="settings-label">Keep last N backups</span>
+                  <span class="settings-hint">Older backups are deleted automatically. Default: 4.</span>
+                </div>
+                <input id="backup-retain-input" class="settings-input-number" type="number" min="1" max="100" value="4" />
+              </div>
+
+              <div class="settings-row settings-row--status" id="backup-status-row" hidden>
+                <span id="backup-last-label" class="settings-hint muted"></span>
+                <span id="backup-failure-badge" class="badge badge--warn" hidden></span>
+              </div>
+
+              <div class="settings-row">
+                <div class="settings-row-info">
+                  <span class="settings-label">Run backup now</span>
+                  <span class="settings-hint">Immediately create an auto-backup to the configured folder.</span>
+                </div>
+                <button id="backup-run-now-btn" class="btn btn--secondary">Back up now</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Toast for backup feedback -->
+          <div id="backup-toast" class="backup-toast" hidden role="status" aria-live="polite">
+            <span id="backup-toast-message"></span>
+            <button id="backup-toast-close" class="backup-toast-close" aria-label="Dismiss">✕</button>
           </div>
         </section>
       </main>

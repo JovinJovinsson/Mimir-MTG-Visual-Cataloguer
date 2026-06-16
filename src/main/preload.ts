@@ -1,6 +1,10 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   IPC_CHANNELS,
+  type BackupChooseFolderResponse,
+  type BackupExportResponse,
+  type BackupRestoreResponse,
+  type BackupAutoRunResponse,
   type ExportCsvRequest,
   type ExportCsvResponse,
   type AddCardByIdRequest,
@@ -153,6 +157,14 @@ const api: MimirApi = {
       ipcRenderer.removeListener(IPC_CHANNELS.scryfallUpdateAvailable, listener);
     };
   },
+  backupChooseFolder: (): Promise<BackupChooseFolderResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.backupChooseFolder),
+  backupExport: (): Promise<BackupExportResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.backupExport),
+  backupRestore: (): Promise<BackupRestoreResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.backupRestore),
+  backupAutoRun: (): Promise<BackupAutoRunResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.backupAutoRun),
 };
 
 contextBridge.exposeInMainWorld('mimir', api);

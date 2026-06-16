@@ -28,6 +28,7 @@
     "vitest": "^2.1.8"
   },
   "dependencies": {
-    "better-sqlite3": "^12.10.0"
+    "better-sqlite3": "^12.10.0",
+    "fflate": "^0.8.3"
   }
 }

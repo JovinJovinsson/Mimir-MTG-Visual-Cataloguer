@@ -30,9 +30,15 @@ import { openScanDb } from './scan-db.js';
 import { openSettingsDb } from './settings-db.js';
 import { ProcessingQueue } from './processing-queue.js';
 import { openReviewQueueDb } from './review-queue-db.js';
+import { computeNextAutoBackupAt } from './backup.js';
+import { catalogueMigrations } from './schema.js';
 
 let catalogue: CatalogueDb | null = null;
 let index: ScryfallIndexDb | null = null;
+
+// Populated in app.whenReady so on-quit handler can run auto-backup
+let onQuitBackup: (() => Promise<void>) | null = null;
+let quitInProgress = false;
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -102,7 +108,24 @@ app.whenReady().then(() => {
     onReviewCountChanged: broadcastReviewCount,
   });
 
-  registerIpcHandlers({ catalogue, index, bootstrap, artCrops, scanDb, settingsDb, thumbnailsDir, processingQueue, reviewQueueDb, broadcastReviewCount });
+  const catalogueDbPath = defaultCataloguePath(userData);
+  const currentSchemaVersion = Math.max(...catalogueMigrations.map((m) => m.version));
+
+  registerIpcHandlers({
+    catalogue,
+    index,
+    bootstrap,
+    artCrops,
+    scanDb,
+    settingsDb,
+    thumbnailsDir,
+    catalogueDbPath,
+    appVersion: app.getVersion(),
+    currentSchemaVersion,
+    processingQueue,
+    reviewQueueDb,
+    broadcastReviewCount,
+  });
   broadcastBootstrapProgress(() => electronWebContents.getAllWebContents(), bootstrap);
   broadcastArtCropProgress(() => electronWebContents.getAllWebContents(), artCrops);
   broadcastScanQueueDepth(() => electronWebContents.getAllWebContents(), processingQueue);
@@ -112,6 +135,41 @@ app.whenReady().then(() => {
   // After window is ready, check for Scryfall updates silently.
   // Failure is intentionally swallowed — the app must still work offline.
   void checkScryfallUpdate();
+
+  // Build the auto-backup runner — shared by on-launch and on-quit.
+  async function runAutoBackup(): Promise<void> {
+    const folder = settingsDb.get('backup.folder');
+    if (!folder) return;
+    const { createBackupZip: mkZip, writeAutoBackupFile: writeZip } = await import('./backup.js');
+    try {
+      const retain = parseInt(settingsDb.get('backup.retainCount') ?? '4', 10);
+      const zipBuffer = await mkZip(catalogue!.raw, catalogueDbPath, thumbnailsDir, currentSchemaVersion, app.getVersion());
+      await writeZip(zipBuffer, folder, retain);
+      settingsDb.set('backup.lastBackupAt', String(Date.now()));
+      settingsDb.set('backup.consecutiveFailures', '0');
+    } catch {
+      const current = parseInt(settingsDb.get('backup.consecutiveFailures') ?? '0', 10);
+      settingsDb.set('backup.consecutiveFailures', String(current + 1));
+    }
+  }
+
+  // Register on-quit backup so the module-level before-quit handler can use it.
+  onQuitBackup = async () => {
+    const cadence = (settingsDb.get('backup.cadence') ?? 'weekly') as string;
+    if (cadence !== 'on-quit') return;
+    await runAutoBackup();
+  };
+
+  // Check if a time-based backup is due on launch.
+  void (async () => {
+    const cadence = (settingsDb.get('backup.cadence') ?? 'weekly') as 'on-quit' | 'daily' | 'weekly' | 'monthly';
+    if (cadence === 'on-quit') return;
+    const lastStr = settingsDb.get('backup.lastBackupAt');
+    const lastAt = lastStr ? parseInt(lastStr, 10) : null;
+    if (computeNextAutoBackupAt(cadence, lastAt, Date.now()) !== null) {
+      await runAutoBackup();
+    }
+  })();
 
   async function checkScryfallUpdate(): Promise<void> {
     try {
@@ -180,6 +238,20 @@ app.on('window-all-closed', () => {
     index = null;
     app.quit();
   }
+});
+
+// Run on-quit backup before closing, then let quit proceed.
+app.on('before-quit', (event) => {
+  if (quitInProgress || !onQuitBackup) return;
+  event.preventDefault();
+  quitInProgress = true;
+  void onQuitBackup().finally(() => {
+    catalogue?.close();
+    index?.close();
+    catalogue = null;
+    index = null;
+    app.quit();
+  });
 });
 
 app.on('will-quit', () => {

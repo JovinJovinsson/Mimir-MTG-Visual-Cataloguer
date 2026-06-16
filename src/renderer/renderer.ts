@@ -1481,6 +1481,8 @@ function setActivePage(page: string): void {
     void enterScanPage();
   } else if (page === 'review') {
     void loadReviewQueue();
+  } else if (page === 'settings') {
+    void loadSettingsPage();
   }
 }
 
@@ -2095,4 +2097,139 @@ scryfallRefreshBtn.addEventListener('click', () => { void triggerScryfallRefresh
 
 window.mimir.onScryfallUpdateAvailable((_event: ScryfallUpdateAvailableDto) => {
   showScryfallUpdateBanner();
+});
+
+// ── Settings page ─────────────────────────────────────────────────────────────
+
+const backupExportBtn = document.getElementById('backup-export-btn') as HTMLButtonElement;
+const backupRestoreBtn = document.getElementById('backup-restore-btn') as HTMLButtonElement;
+const backupFolderBtn = document.getElementById('backup-folder-btn') as HTMLButtonElement;
+const backupFolderDisplay = document.getElementById('backup-folder-display') as HTMLSpanElement;
+const backupCadenceSelect = document.getElementById('backup-cadence-select') as HTMLSelectElement;
+const backupRetainInput = document.getElementById('backup-retain-input') as HTMLInputElement;
+const backupRunNowBtn = document.getElementById('backup-run-now-btn') as HTMLButtonElement;
+const backupToast = document.getElementById('backup-toast') as HTMLDivElement;
+const backupToastMessage = document.getElementById('backup-toast-message') as HTMLSpanElement;
+const backupToastClose = document.getElementById('backup-toast-close') as HTMLButtonElement;
+const backupStatusRow = document.getElementById('backup-status-row') as HTMLDivElement;
+const backupLastLabel = document.getElementById('backup-last-label') as HTMLSpanElement;
+const backupFailureBadge = document.getElementById('backup-failure-badge') as HTMLSpanElement;
+
+function showBackupToast(message: string, isError = false): void {
+  backupToastMessage.textContent = message;
+  backupToast.classList.toggle('backup-toast--error', isError);
+  backupToast.hidden = false;
+  setTimeout(() => { backupToast.hidden = true; }, 6000);
+}
+
+backupToastClose.addEventListener('click', () => { backupToast.hidden = true; });
+
+async function loadSettingsPage(): Promise<void> {
+  const [folderRes, cadenceRes, retainRes, lastAtRes, failuresRes] = await Promise.all([
+    window.mimir.settingsGet({ key: 'backup.folder' }),
+    window.mimir.settingsGet({ key: 'backup.cadence' }),
+    window.mimir.settingsGet({ key: 'backup.retainCount' }),
+    window.mimir.settingsGet({ key: 'backup.lastBackupAt' }),
+    window.mimir.settingsGet({ key: 'backup.consecutiveFailures' }),
+  ]);
+
+  if (folderRes.ok && folderRes.value) {
+    backupFolderDisplay.textContent = folderRes.value;
+    backupFolderDisplay.classList.remove('muted');
+  } else {
+    backupFolderDisplay.textContent = 'Not set';
+    backupFolderDisplay.classList.add('muted');
+  }
+
+  if (cadenceRes.ok && cadenceRes.value) {
+    backupCadenceSelect.value = cadenceRes.value;
+  }
+
+  if (retainRes.ok && retainRes.value) {
+    backupRetainInput.value = retainRes.value;
+  }
+
+  if (lastAtRes.ok && lastAtRes.value) {
+    const ts = parseInt(lastAtRes.value, 10);
+    backupLastLabel.textContent = `Last backup: ${new Date(ts).toLocaleString()}`;
+    backupStatusRow.hidden = false;
+  }
+
+  const failures = parseInt((failuresRes.ok && failuresRes.value) ? failuresRes.value : '0', 10);
+  if (failures >= 3) {
+    backupFailureBadge.textContent = `${failures} consecutive failures`;
+    backupFailureBadge.hidden = false;
+    backupStatusRow.hidden = false;
+  } else {
+    backupFailureBadge.hidden = true;
+  }
+}
+
+backupExportBtn.addEventListener('click', async () => {
+  backupExportBtn.disabled = true;
+  backupExportBtn.textContent = 'Exporting…';
+  try {
+    const res = await window.mimir.backupExport();
+    if (res.ok) {
+      if (res.savedPath) showBackupToast(`Backup saved to ${res.savedPath}`);
+    } else {
+      showBackupToast(`Export failed: ${res.error}`, true);
+    }
+  } finally {
+    backupExportBtn.disabled = false;
+    backupExportBtn.textContent = 'Export backup…';
+  }
+});
+
+backupRestoreBtn.addEventListener('click', async () => {
+  backupRestoreBtn.disabled = true;
+  backupRestoreBtn.textContent = 'Restoring…';
+  try {
+    const res = await window.mimir.backupRestore();
+    if (res.ok) {
+      showBackupToast(res.message);
+    } else if (res.error !== 'Cancelled') {
+      showBackupToast(`Restore failed: ${res.error}`, true);
+    }
+  } finally {
+    backupRestoreBtn.disabled = false;
+    backupRestoreBtn.textContent = 'Restore backup…';
+  }
+});
+
+backupFolderBtn.addEventListener('click', async () => {
+  const res = await window.mimir.backupChooseFolder();
+  if (!res.ok) return;
+  if (res.cancelled) return;
+  const folder = res.folder;
+  await window.mimir.settingsSet({ key: 'backup.folder', value: folder });
+  backupFolderDisplay.textContent = folder;
+  backupFolderDisplay.classList.remove('muted');
+});
+
+backupCadenceSelect.addEventListener('change', async () => {
+  await window.mimir.settingsSet({ key: 'backup.cadence', value: backupCadenceSelect.value });
+});
+
+backupRetainInput.addEventListener('change', async () => {
+  const val = Math.max(1, Math.min(100, parseInt(backupRetainInput.value, 10) || 4));
+  backupRetainInput.value = String(val);
+  await window.mimir.settingsSet({ key: 'backup.retainCount', value: String(val) });
+});
+
+backupRunNowBtn.addEventListener('click', async () => {
+  backupRunNowBtn.disabled = true;
+  backupRunNowBtn.textContent = 'Backing up…';
+  try {
+    const res = await window.mimir.backupAutoRun();
+    if (res.ok) {
+      showBackupToast(`Backup saved to ${res.savedPath}`);
+      await loadSettingsPage();
+    } else {
+      showBackupToast(`Backup failed: ${res.error}`, true);
+    }
+  } finally {
+    backupRunNowBtn.disabled = false;
+    backupRunNowBtn.textContent = 'Back up now';
+  }
 });

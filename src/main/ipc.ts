@@ -1,8 +1,13 @@
 import { ipcMain, dialog, type WebContents } from 'electron';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import {
   IPC_CHANNELS,
+  type BackupChooseFolderResponse,
+  type BackupExportResponse,
+  type BackupRestoreResponse,
+  type BackupAutoRunResponse,
   type ExportCsvRequest,
   type ExportCsvResponse,
   type AddCardByIdRequest,
@@ -79,6 +84,7 @@ import { resolveReviewItem } from './review-resolver.js';
 import { planBulkReviewAction } from './bulk-review-planner.js';
 import { planMoveToCollection } from './move-to-collection-planner.js';
 import { toMoxfieldCsv, toDeckboxCsv, toManaBoxCsv, toMimirNativeCsv, type ExportCard } from './csv-export.js';
+import { createBackupZip, restoreFromZip, writeAutoBackupFile, validateRestoreZip } from './backup.js';
 
 export interface IpcDeps {
   catalogue: CatalogueDb;
@@ -88,13 +94,16 @@ export interface IpcDeps {
   scanDb: ScanDb;
   settingsDb: SettingsDb;
   thumbnailsDir: string;
+  catalogueDbPath: string;
+  appVersion: string;
+  currentSchemaVersion: number;
   processingQueue: ProcessingQueue;
   reviewQueueDb: ReviewQueueDb;
   broadcastReviewCount: () => void;
 }
 
 export function registerIpcHandlers(deps: IpcDeps): void {
-  const { catalogue, index, bootstrap, artCrops, scanDb, settingsDb, thumbnailsDir, processingQueue, reviewQueueDb, broadcastReviewCount } = deps;
+  const { catalogue, index, bootstrap, artCrops, scanDb, settingsDb, thumbnailsDir, catalogueDbPath, appVersion, currentSchemaVersion, processingQueue, reviewQueueDb, broadcastReviewCount } = deps;
 
   ipcMain.handle(
     IPC_CHANNELS.exportCsv,
@@ -650,6 +659,105 @@ export function registerIpcHandlers(deps: IpcDeps): void {
         broadcastReviewCount();
         return { ok: true };
       } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.backupChooseFolder,
+    async (): Promise<BackupChooseFolderResponse> => {
+      try {
+        const result = await dialog.showOpenDialog({
+          properties: ['openDirectory', 'createDirectory'],
+        });
+        if (result.canceled || result.filePaths.length === 0) {
+          return { ok: true, cancelled: true };
+        }
+        return { ok: true, folder: result.filePaths[0]! };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.backupExport,
+    async (): Promise<BackupExportResponse> => {
+      try {
+        const zipBuffer = await createBackupZip(catalogue.raw, catalogueDbPath, thumbnailsDir, currentSchemaVersion, appVersion);
+
+        const date = new Date().toISOString().slice(0, 10);
+        const result = await dialog.showSaveDialog({
+          defaultPath: `mimir-backup-${date}.zip`,
+          filters: [{ name: 'Mimir Backup', extensions: ['zip'] }],
+        });
+
+        if (result.canceled || !result.filePath) {
+          return { ok: true, savedPath: null };
+        }
+
+        await writeFile(result.filePath, zipBuffer);
+        return { ok: true, savedPath: result.filePath };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.backupRestore,
+    async (): Promise<BackupRestoreResponse> => {
+      try {
+        const result = await dialog.showOpenDialog({
+          filters: [{ name: 'Mimir Backup', extensions: ['zip'] }],
+          properties: ['openFile'],
+        });
+
+        if (result.canceled || result.filePaths.length === 0) {
+          return { ok: false, error: 'Cancelled' };
+        }
+
+        const zipBuffer = await readFile(result.filePaths[0]!);
+        const restoreResult = await restoreFromZip(
+          new Uint8Array(zipBuffer),
+          catalogueDbPath,
+          thumbnailsDir,
+          currentSchemaVersion,
+          async (_path) => { /* migrations run by DB open on next launch */ },
+        );
+
+        if (!restoreResult.ok) {
+          return { ok: false, error: restoreResult.error };
+        }
+
+        const msg = restoreResult.compatibility === 'needs-migration'
+          ? 'Backup restored and migrated. Please restart Mimir to reload the catalogue.'
+          : 'Backup restored successfully. Please restart Mimir to reload the catalogue.';
+        return { ok: true, message: msg };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.backupAutoRun,
+    async (): Promise<BackupAutoRunResponse> => {
+      try {
+        const folder = settingsDb.get('backup.folder');
+        if (!folder) {
+          return { ok: false, error: 'No backup folder configured' };
+        }
+        const retain = parseInt(settingsDb.get('backup.retainCount') ?? '4', 10);
+        const zipBuffer = await createBackupZip(catalogue.raw, catalogueDbPath, thumbnailsDir, currentSchemaVersion, appVersion);
+        const savedPath = await writeAutoBackupFile(zipBuffer, folder, retain);
+        settingsDb.set('backup.lastBackupAt', String(Date.now()));
+        settingsDb.set('backup.consecutiveFailures', '0');
+        return { ok: true, savedPath };
+      } catch (err) {
+        const current = parseInt(settingsDb.get('backup.consecutiveFailures') ?? '0', 10);
+        settingsDb.set('backup.consecutiveFailures', String(current + 1));
         return { ok: false, error: errorMessage(err) };
       }
     },
