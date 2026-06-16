@@ -1,4 +1,4 @@
-import type { CardForRenderer, CollectionForRenderer, ScanModePreset } from '../shared/types.js';
+import type { CardForRenderer, CollectionForRenderer, Foil, Condition, ScanModePreset } from '../shared/types.js';
 import {
   parseSearchQuery,
   filterCards,
@@ -363,6 +363,12 @@ class ReviewPanelController {
     }
   }
 }
+
+// ── Sort types ────────────────────────────────────────────────────────────────
+
+type SortField = 'name' | 'set_code' | 'collector_number' | 'quantity' | 'foil' | 'condition' | 'price_usd' | 'last_seen_at';
+type SortDir = 'asc' | 'desc';
+interface SortPref { field: SortField; dir: SortDir; }
 
 // ── Catalogue page elements ───────────────────────────────────────────────────
 
@@ -765,36 +771,107 @@ function applyReviewCount(count: number): void {
 
 // ── Catalogue ─────────────────────────────────────────────────────────────────
 
-function renderRow(card: CardForRenderer): HTMLTableRowElement {
+function renderRow(card: CardForRenderer, rowIdx: number): HTMLTableRowElement {
   const tr = document.createElement('tr');
   tr.dataset['cardId'] = String(card.id);
+  tr.dataset['rowIdx'] = String(rowIdx);
+  if (card.needs_review) tr.classList.add('row-needs-review');
+  if (selectedCardIds.has(card.id)) tr.classList.add('is-selected');
 
-  const cells: [string, string | Node][] = [
-    ['col-thumb', spanThumb()],
-    ['col-name', card.name],
-    ['col-set', spanSet(card.set_code)],
-    ['col-cn', card.collector_number],
-    ['col-qty', String(card.quantity)],
-    ['col-foil', spanFoil(card.foil)],
-    ['col-cond', card.condition],
-    ['col-price cell-price', formatPrice(card.price_usd)],
-    ['col-seen cell-seen', formatLastSeen(card.last_seen_at)],
-  ];
+  // Checkbox cell
+  const tdCheck = document.createElement('td');
+  tdCheck.className = 'col-check';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = selectedCardIds.has(card.id);
+  cb.addEventListener('click', (e) => {
+    e.stopPropagation();
+    handleCardCheckboxClick(card.id, rowIdx, e.shiftKey);
+  });
+  tdCheck.appendChild(cb);
+  tr.appendChild(tdCheck);
 
-  for (const [cls, content] of cells) {
-    const td = document.createElement('td');
-    td.className = cls;
-    if (typeof content === 'string') td.textContent = content;
-    else td.appendChild(content);
-    tr.appendChild(td);
+  // Thumb cell
+  const tdThumb = document.createElement('td');
+  tdThumb.className = 'col-thumb';
+  if (card.art_crop_path) {
+    const img = document.createElement('img');
+    img.className = 'thumb-img';
+    img.src = `file://${card.art_crop_path}`;
+    img.alt = card.name;
+    img.loading = 'lazy';
+    tdThumb.appendChild(img);
+  } else {
+    const s = document.createElement('span');
+    s.className = 'thumb-placeholder';
+    tdThumb.appendChild(s);
   }
-  return tr;
-}
+  tr.appendChild(tdThumb);
 
-function spanThumb(): Node {
-  const s = document.createElement('span');
-  s.className = 'thumb-placeholder';
-  return s;
+  // Name cell (with optional review chip)
+  const tdName = document.createElement('td');
+  tdName.className = 'col-name';
+  tdName.textContent = card.name;
+  if (card.needs_review) {
+    const chip = document.createElement('span');
+    chip.className = 'review-chip';
+    chip.textContent = 'Review';
+    tdName.appendChild(chip);
+  }
+  tr.appendChild(tdName);
+
+  // Set cell
+  const tdSet = document.createElement('td');
+  tdSet.className = 'col-set';
+  const setSpan = document.createElement('span');
+  setSpan.className = 'cell-set';
+  setSpan.textContent = card.set_code;
+  tdSet.appendChild(setSpan);
+  tr.appendChild(tdSet);
+
+  // Collector number cell
+  const tdCn = document.createElement('td');
+  tdCn.className = 'col-cn';
+  tdCn.textContent = card.collector_number;
+  tr.appendChild(tdCn);
+
+  // Editable: qty
+  const tdQty = document.createElement('td');
+  tdQty.className = 'col-qty cell-editable';
+  tdQty.textContent = String(card.quantity);
+  tdQty.addEventListener('click', () => startInlineEdit(tdQty, card, 'quantity'));
+  tr.appendChild(tdQty);
+
+  // Editable: foil
+  const tdFoil = document.createElement('td');
+  tdFoil.className = 'col-foil cell-editable';
+  const foilSpan = document.createElement('span');
+  foilSpan.className = `cell-foil is-${card.foil}`;
+  foilSpan.textContent = card.foil;
+  tdFoil.appendChild(foilSpan);
+  tdFoil.addEventListener('click', () => startInlineEdit(tdFoil, card, 'foil'));
+  tr.appendChild(tdFoil);
+
+  // Editable: condition
+  const tdCond = document.createElement('td');
+  tdCond.className = 'col-cond cell-editable';
+  tdCond.textContent = card.condition;
+  tdCond.addEventListener('click', () => startInlineEdit(tdCond, card, 'condition'));
+  tr.appendChild(tdCond);
+
+  // Price
+  const tdPrice = document.createElement('td');
+  tdPrice.className = 'col-price cell-price';
+  tdPrice.textContent = formatPrice(card.price_usd);
+  tr.appendChild(tdPrice);
+
+  // Last seen
+  const tdSeen = document.createElement('td');
+  tdSeen.className = 'col-seen cell-seen';
+  tdSeen.textContent = formatLastSeen(card.last_seen_at);
+  tr.appendChild(tdSeen);
+
+  return tr;
 }
 
 function spanSet(code: string): Node {
@@ -811,12 +888,104 @@ function spanFoil(foil: string): Node {
   return s;
 }
 
+// ── In-place editing ──────────────────────────────────────────────────────────
+
+function startInlineEdit(
+  td: HTMLTableCellElement,
+  card: CardForRenderer,
+  field: 'quantity' | 'foil' | 'condition',
+): void {
+  if (td.classList.contains('is-editing')) return;
+  td.classList.add('is-editing');
+  const originalContent = td.innerHTML;
+  td.innerHTML = '';
+
+  let control: HTMLInputElement | HTMLSelectElement;
+
+  if (field === 'quantity') {
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.min = '0';
+    inp.value = String(card.quantity);
+    inp.className = 'inline-edit-input';
+    control = inp;
+  } else if (field === 'foil') {
+    const sel = document.createElement('select');
+    sel.className = 'inline-edit-select';
+    for (const v of ['normal', 'foil', 'etched']) {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      if (v === card.foil) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    control = sel;
+  } else {
+    const sel = document.createElement('select');
+    sel.className = 'inline-edit-select';
+    for (const v of ['NM', 'LP', 'MP', 'HP', 'DMG']) {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      if (v === card.condition) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    control = sel;
+  }
+
+  td.appendChild(control);
+  control.focus();
+  if (control instanceof HTMLInputElement) control.select();
+
+  const cancel = (): void => {
+    td.innerHTML = originalContent;
+    td.classList.remove('is-editing');
+  };
+
+  const commit = async (): Promise<void> => {
+    if (!td.classList.contains('is-editing')) return;
+    td.classList.remove('is-editing');
+    const rawValue = control.value;
+    const value = field === 'quantity' ? Math.max(0, parseInt(rawValue, 10) || 0) : rawValue;
+
+    // Optimistic update
+    const idx = allCards.findIndex((c) => c.id === card.id);
+    if (idx >= 0) {
+      const updated = { ...allCards[idx]! };
+      if (field === 'quantity') updated.quantity = value as number;
+      else if (field === 'foil') updated.foil = value as Foil;
+      else updated.condition = value as Condition;
+      allCards[idx] = updated;
+    }
+
+    td.innerHTML = originalContent;
+
+    const res = await window.mimir.cardUpdateField({ cardId: card.id, field, value });
+    if (!res.ok) {
+      setStatus(`Update failed: ${res.error}`, 'error');
+      // Revert optimistic update
+      await refresh();
+    } else if (idx >= 0) {
+      allCards[idx] = res.card;
+      applySearch();
+    }
+  };
+
+  control.addEventListener('keydown', (e: Event) => {
+    const ke = e as KeyboardEvent;
+    if (ke.key === 'Escape') { e.stopPropagation(); cancel(); }
+    if (ke.key === 'Enter') { e.preventDefault(); void commit(); }
+  });
+
+  control.addEventListener('blur', () => { void commit(); }, { once: true });
+}
+
 function renderEmpty(): void {
   tableBody.innerHTML = '';
   const tr = document.createElement('tr');
   tr.className = 'empty-row';
   const td = document.createElement('td');
-  td.colSpan = 9;
+  td.colSpan = 10;
   td.textContent = 'No cards yet — add one by name above.';
   tr.appendChild(td);
   tableBody.appendChild(tr);
@@ -827,19 +996,218 @@ function renderCards(cards: CardForRenderer[]): void {
     renderEmpty();
     return;
   }
+  const sorted = sortCards(cards, sortState);
   tableBody.innerHTML = '';
-  for (const card of cards) {
-    const tr = renderRow(card);
+  sorted.forEach((card, idx) => {
+    const tr = renderRow(card, idx);
     tr.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      showCardContextMenu(card.id, e.clientX, e.clientY);
+      showCardContextMenu(card, e.clientX, e.clientY);
     });
     tableBody.appendChild(tr);
-  }
+  });
+  updateSelectionUI();
 }
 
 let allCards: CardForRenderer[] = [];
 let searchQuery = '';
+
+// ── Sort state ────────────────────────────────────────────────────────────────
+
+let sortState: SortPref = { field: 'last_seen_at', dir: 'desc' };
+
+function sortCollectionKey(): string {
+  const colId = getActiveCollectionFromQuery();
+  return `catalogue.sort.${colId}`;
+}
+
+async function loadSortPref(): Promise<void> {
+  const res = await window.mimir.settingsGet({ key: sortCollectionKey() });
+  if (res.ok && res.value) {
+    try {
+      const parsed = JSON.parse(res.value) as SortPref;
+      if (parsed.field && parsed.dir) sortState = parsed;
+    } catch {
+      // ignore malformed
+    }
+  }
+  applySortHeaders();
+}
+
+async function saveSortPref(): Promise<void> {
+  await window.mimir.settingsSet({ key: sortCollectionKey(), value: JSON.stringify(sortState) });
+}
+
+function applySortHeaders(): void {
+  const ths = document.querySelectorAll<HTMLTableCellElement>('#catalogue-table thead th[data-sort-field]');
+  for (const th of ths) {
+    const field = th.dataset['sortField'] as SortField;
+    th.classList.remove('col-th--sort-asc', 'col-th--sort-desc');
+    if (field === sortState.field) {
+      th.classList.add(sortState.dir === 'asc' ? 'col-th--sort-asc' : 'col-th--sort-desc');
+    }
+  }
+}
+
+function sortCards(cards: CardForRenderer[], pref: SortPref): CardForRenderer[] {
+  const { field, dir } = pref;
+  const mul = dir === 'asc' ? 1 : -1;
+  return [...cards].sort((a, b) => {
+    const av = a[field] ?? '';
+    const bv = b[field] ?? '';
+    if (av < bv) return -1 * mul;
+    if (av > bv) return 1 * mul;
+    return 0;
+  });
+}
+
+// Wire sort header clicks
+document.querySelectorAll<HTMLTableCellElement>('#catalogue-table thead th[data-sort-field]').forEach((th) => {
+  th.addEventListener('click', () => {
+    const field = th.dataset['sortField'] as SortField;
+    if (sortState.field === field) {
+      sortState = { field, dir: sortState.dir === 'asc' ? 'desc' : 'asc' };
+    } else {
+      sortState = { field, dir: 'asc' };
+    }
+    applySortHeaders();
+    applySearch();
+    void saveSortPref();
+  });
+});
+
+// ── Multi-select state ────────────────────────────────────────────────────────
+
+let selectedCardIds = new Set<number>();
+let lastClickedCatalogueIdx = -1;
+
+const catalogueSelectAll = document.getElementById('catalogue-select-all') as HTMLInputElement;
+const bulkEditWrap = document.getElementById('bulk-edit-wrap') as HTMLDivElement;
+const bulkCountEl = document.getElementById('bulk-count') as HTMLSpanElement;
+const bulkEditBtn = document.getElementById('bulk-edit-btn') as HTMLButtonElement;
+const bulkEditPopover = document.getElementById('bulk-edit-popover') as HTMLDivElement;
+const bulkQtyInput = document.getElementById('bulk-qty') as HTMLInputElement;
+const bulkFoilSelect = document.getElementById('bulk-foil') as HTMLSelectElement;
+const bulkConditionSelect = document.getElementById('bulk-condition') as HTMLSelectElement;
+const bulkCollectionSelect = document.getElementById('bulk-collection') as HTMLSelectElement;
+const bulkApplyBtn = document.getElementById('bulk-edit-apply-btn') as HTMLButtonElement;
+const bulkCancelBtn = document.getElementById('bulk-edit-cancel-btn') as HTMLButtonElement;
+
+function updateSelectionUI(): void {
+  const count = selectedCardIds.size;
+  bulkCountEl.textContent = String(count);
+  bulkEditWrap.hidden = count === 0;
+
+  const visibleCards = getCurrentVisibleCards();
+  const allVisible = visibleCards.length > 0 && visibleCards.every((c) => selectedCardIds.has(c.id));
+  catalogueSelectAll.checked = allVisible;
+  catalogueSelectAll.indeterminate = !allVisible && selectedCardIds.size > 0;
+}
+
+function getCurrentVisibleCards(): CardForRenderer[] {
+  const rows = tableBody.querySelectorAll<HTMLTableRowElement>('tr[data-card-id]');
+  const ids = new Set(Array.from(rows).map((r) => Number(r.dataset['cardId'])));
+  return allCards.filter((c) => ids.has(c.id));
+}
+
+function handleCardCheckboxClick(cardId: number, rowIdx: number, shiftKey: boolean): void {
+  const visibleCards = getCurrentVisibleCards();
+  if (shiftKey && lastClickedCatalogueIdx >= 0) {
+    const lo = Math.min(lastClickedCatalogueIdx, rowIdx);
+    const hi = Math.max(lastClickedCatalogueIdx, rowIdx);
+    const shouldSelect = !selectedCardIds.has(cardId);
+    for (let i = lo; i <= hi; i++) {
+      const c = visibleCards[i];
+      if (c) {
+        if (shouldSelect) selectedCardIds.add(c.id);
+        else selectedCardIds.delete(c.id);
+      }
+    }
+  } else {
+    if (selectedCardIds.has(cardId)) selectedCardIds.delete(cardId);
+    else selectedCardIds.add(cardId);
+    lastClickedCatalogueIdx = rowIdx;
+  }
+  // Re-render checkboxes in visible rows
+  const rows = tableBody.querySelectorAll<HTMLTableRowElement>('tr[data-card-id]');
+  for (const row of rows) {
+    const id = Number(row.dataset['cardId']);
+    const cb = row.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    if (cb) cb.checked = selectedCardIds.has(id);
+    row.classList.toggle('is-selected', selectedCardIds.has(id));
+  }
+  updateSelectionUI();
+}
+
+catalogueSelectAll.addEventListener('change', () => {
+  const visibleCards = getCurrentVisibleCards();
+  if (catalogueSelectAll.checked) {
+    visibleCards.forEach((c) => selectedCardIds.add(c.id));
+  } else {
+    visibleCards.forEach((c) => selectedCardIds.delete(c.id));
+  }
+  const rows = tableBody.querySelectorAll<HTMLTableRowElement>('tr[data-card-id]');
+  for (const row of rows) {
+    const id = Number(row.dataset['cardId']);
+    const cb = row.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    if (cb) cb.checked = selectedCardIds.has(id);
+    row.classList.toggle('is-selected', selectedCardIds.has(id));
+  }
+  updateSelectionUI();
+});
+
+// ── Bulk edit popover ─────────────────────────────────────────────────────────
+
+function populateBulkCollectionDropdown(collections: CollectionForRenderer[]): void {
+  const current = bulkCollectionSelect.value;
+  bulkCollectionSelect.innerHTML = '<option value="">— keep —</option>';
+  for (const col of collections) {
+    const opt = document.createElement('option');
+    opt.value = String(col.id);
+    opt.textContent = col.name + (col.is_wishlist ? ' ★' : '');
+    if (String(col.id) === current) opt.selected = true;
+    bulkCollectionSelect.appendChild(opt);
+  }
+}
+
+bulkEditBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  bulkEditPopover.hidden = !bulkEditPopover.hidden;
+  if (!bulkEditPopover.hidden) {
+    bulkQtyInput.value = '';
+    bulkFoilSelect.value = '';
+    bulkConditionSelect.value = '';
+    bulkCollectionSelect.value = '';
+  }
+});
+
+bulkCancelBtn.addEventListener('click', () => {
+  bulkEditPopover.hidden = true;
+});
+
+bulkApplyBtn.addEventListener('click', async () => {
+  const cardIds = [...selectedCardIds];
+  if (cardIds.length === 0) return;
+
+  const qty = bulkQtyInput.value !== '' ? Math.max(0, parseInt(bulkQtyInput.value, 10)) : undefined;
+  const foil = bulkFoilSelect.value !== '' ? bulkFoilSelect.value as Foil : undefined;
+  const condition = bulkConditionSelect.value !== '' ? bulkConditionSelect.value as Condition : undefined;
+  const collectionId = bulkCollectionSelect.value !== '' ? Number(bulkCollectionSelect.value) : undefined;
+
+  bulkApplyBtn.disabled = true;
+  const res = await window.mimir.cardBulkEdit({ cardIds, qty, foil, condition, collectionId });
+  bulkApplyBtn.disabled = false;
+
+  if (res.ok) {
+    bulkEditPopover.hidden = true;
+    selectedCardIds.clear();
+    lastClickedCatalogueIdx = -1;
+    await refresh();
+    updateSelectionUI();
+  } else {
+    setStatus(`Bulk edit failed: ${res.error}`, 'error');
+  }
+});
 
 // ── Search elements (referenced before DOMContentLoaded runs, wired below) ───
 const catalogueSearchInput = document.getElementById('catalogue-search') as HTMLInputElement;
@@ -896,6 +1264,9 @@ const ctxDeleteCollectionBtn = document.getElementById('ctx-delete-collection') 
 
 const cardContextMenu = document.getElementById('card-context-menu') as HTMLDivElement;
 const ctxMoveToCollectionBtn = document.getElementById('ctx-move-to-collection') as HTMLButtonElement;
+const ctxAddToReviewBtn = document.getElementById('ctx-add-to-review') as HTMLButtonElement;
+const ctxOpenInScryfallBtn = document.getElementById('ctx-open-in-scryfall') as HTMLButtonElement;
+const ctxDeleteCardBtn = document.getElementById('ctx-delete-card') as HTMLButtonElement;
 
 const moveCollectionDialog = document.getElementById('move-collection-dialog') as HTMLDivElement;
 const moveCollectionList = document.getElementById('move-collection-list') as HTMLUListElement;
@@ -909,6 +1280,7 @@ const deleteCollectionCancelBtn = document.getElementById('delete-collection-can
 
 let collectionsCache: CollectionForRenderer[] = [];
 let ctxCollectionId: number | null = null;
+let ctxCard: CardForRenderer | null = null;
 let ctxCardId: number | null = null;
 
 function hideAllContextMenus(): void {
@@ -916,8 +1288,13 @@ function hideAllContextMenus(): void {
   cardContextMenu.hidden = true;
 }
 
-document.addEventListener('click', hideAllContextMenus);
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideAllContextMenus(); });
+document.addEventListener('click', (e) => {
+  hideAllContextMenus();
+  if (!bulkEditPopover.hidden && !bulkEditWrap.contains(e.target as Node)) {
+    bulkEditPopover.hidden = true;
+  }
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { hideAllContextMenus(); bulkEditPopover.hidden = true; } });
 
 function positionMenu(menu: HTMLDivElement, x: number, y: number): void {
   menu.style.left = `${x}px`;
@@ -931,8 +1308,9 @@ function showCollectionContextMenu(id: number, x: number, y: number): void {
   positionMenu(collectionContextMenu, x, y);
 }
 
-function showCardContextMenu(cardId: number, x: number, y: number): void {
-  ctxCardId = cardId;
+function showCardContextMenu(card: CardForRenderer, x: number, y: number): void {
+  ctxCard = card;
+  ctxCardId = card.id;
   hideAllContextMenus();
   positionMenu(cardContextMenu, x, y);
 }
@@ -962,6 +1340,34 @@ ctxMoveToCollectionBtn.addEventListener('click', (e) => {
   hideAllContextMenus();
   if (ctxCardId == null) return;
   showMoveToCollectionDialog(ctxCardId);
+});
+
+ctxAddToReviewBtn.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  hideAllContextMenus();
+  if (ctxCardId == null) return;
+  const res = await window.mimir.cardAddToReview({ cardId: ctxCardId });
+  if (!res.ok) { setStatus(res.error, 'error'); return; }
+  await refresh();
+});
+
+ctxOpenInScryfallBtn.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  hideAllContextMenus();
+  if (!ctxCard) return;
+  const url = `https://scryfall.com/card/${ctxCard.set_code}/${ctxCard.collector_number}`;
+  await window.mimir.openExternal({ url });
+});
+
+ctxDeleteCardBtn.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  hideAllContextMenus();
+  if (ctxCardId == null) return;
+  const res = await window.mimir.cardDelete({ cardId: ctxCardId });
+  if (!res.ok) { setStatus(res.error, 'error'); return; }
+  selectedCardIds.delete(ctxCardId);
+  await refresh();
+  updateSelectionUI();
 });
 
 function showMoveToCollectionDialog(cardId: number): void {
@@ -1091,7 +1497,7 @@ function renderCollectionItem(
       : setSearchToken(searchQuery, 'collection', label);
     catalogueSearchInput.value = searchQuery;
     setActivePage('catalogue');
-    applySearch();
+    void loadSortPref().then(() => applySearch());
     renderCollectionsSidebar();
   });
 
@@ -1127,6 +1533,7 @@ async function refreshCollections(): Promise<void> {
   collectionsCache = res.collections;
   renderCollectionsSidebar();
   populatePresetCollectionDropdown(collectionsCache);
+  populateBulkCollectionDropdown(collectionsCache);
 }
 
 // ── Search input + sidebar filter wiring ──────────────────────────────────────
@@ -1656,6 +2063,7 @@ void (async () => {
     applyStatusToBanner(status);
   }
   await refreshCollections();
+  await loadSortPref();
   await refresh();
   await refreshSets();
   const countRes = await window.mimir.reviewCount();

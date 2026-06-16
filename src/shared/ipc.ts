@@ -3,6 +3,11 @@ import type { CardForRenderer, CollectionForRenderer, Condition, Foil, ScanForRe
 export type { ReviewItemDto };
 
 export const IPC_CHANNELS = {
+  cardUpdateField: 'cards:updateField',
+  cardBulkEdit: 'cards:bulkEdit',
+  cardDelete: 'cards:delete',
+  cardAddToReview: 'cards:addToReview',
+  openExternal: 'app:openExternal',
   exportCsv: 'catalogue:exportCsv',
   reviewConfirmFieldCorrections: 'review:confirmFieldCorrections',
   addCardById: 'catalogue:addCardById',
@@ -333,6 +338,52 @@ export type BackupAutoRunResponse =
   | { ok: true; savedPath: string }
   | { ok: false; error: string };
 
+export interface CardUpdateFieldRequest {
+  cardId: number;
+  field: 'quantity' | 'foil' | 'condition' | 'notes';
+  value: number | string | null;
+}
+
+export type CardUpdateFieldResponse =
+  | { ok: true; card: CardForRenderer }
+  | { ok: false; error: string };
+
+export interface CardBulkEditRequest {
+  cardIds: number[];
+  qty?: number;
+  foil?: Foil;
+  condition?: Condition;
+  collectionId?: number;
+}
+
+export type CardBulkEditResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export interface CardDeleteRequest {
+  cardId: number;
+}
+
+export type CardDeleteResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export interface CardAddToReviewRequest {
+  cardId: number;
+}
+
+export type CardAddToReviewResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
+export interface OpenExternalRequest {
+  url: string;
+}
+
+export type OpenExternalResponse =
+  | { ok: true }
+  | { ok: false; error: string };
+
 export interface MimirApi {
   exportCsv(req: ExportCsvRequest): Promise<ExportCsvResponse>;
   reviewConfirmFieldCorrections(req: ReviewConfirmFieldCorrectionsRequest): Promise<ReviewConfirmFieldCorrectionsResponse>;
@@ -373,6 +424,11 @@ export interface MimirApi {
   backupExport(): Promise<BackupExportResponse>;
   backupRestore(): Promise<BackupRestoreResponse>;
   backupAutoRun(): Promise<BackupAutoRunResponse>;
+  cardUpdateField(req: CardUpdateFieldRequest): Promise<CardUpdateFieldResponse>;
+  cardBulkEdit(req: CardBulkEditRequest): Promise<CardBulkEditResponse>;
+  cardDelete(req: CardDeleteRequest): Promise<CardDeleteResponse>;
+  cardAddToReview(req: CardAddToReviewRequest): Promise<CardAddToReviewResponse>;
+  openExternal(req: OpenExternalRequest): Promise<OpenExternalResponse>;
 }
 
 declare global {

@@ -116,6 +116,7 @@ app.whenReady().then(() => {
     index,
     bootstrap,
     artCrops,
+    artCropsDir: cropsDir,
     scanDb,
     settingsDb,
     thumbnailsDir,

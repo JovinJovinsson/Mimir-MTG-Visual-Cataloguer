@@ -1,4 +1,4 @@
-import { ipcMain, dialog, type WebContents } from 'electron';
+import { ipcMain, dialog, shell, type WebContents } from 'electron';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -8,6 +8,14 @@ import {
   type BackupExportResponse,
   type BackupRestoreResponse,
   type BackupAutoRunResponse,
+  type CardAddToReviewRequest,
+  type CardAddToReviewResponse,
+  type CardBulkEditRequest,
+  type CardBulkEditResponse,
+  type CardDeleteRequest,
+  type CardDeleteResponse,
+  type CardUpdateFieldRequest,
+  type CardUpdateFieldResponse,
   type ExportCsvRequest,
   type ExportCsvResponse,
   type AddCardByIdRequest,
@@ -33,6 +41,8 @@ import {
   type GetSettingResponse,
   type ListCardsResponse,
   type ListRecentScansResponse,
+  type OpenExternalRequest,
+  type OpenExternalResponse,
   type ReviewBulkConfirmFoilRequest,
   type ReviewBulkConfirmFoilResponse,
   type ReviewBulkConfirmSetRequest,
@@ -82,6 +92,7 @@ import type { ProcessingQueue, ScanQueueDepthEvent } from './processing-queue.js
 import type { ReviewQueueDb } from './review-queue-db.js';
 import { resolveReviewItem } from './review-resolver.js';
 import { planBulkReviewAction } from './bulk-review-planner.js';
+import { planBulkEdit } from './catalogue-edit-planner.js';
 import { planMoveToCollection } from './move-to-collection-planner.js';
 import { toMoxfieldCsv, toDeckboxCsv, toManaBoxCsv, toMimirNativeCsv, type ExportCard } from './csv-export.js';
 import { createBackupZip, restoreFromZip, writeAutoBackupFile, validateRestoreZip } from './backup.js';
@@ -91,6 +102,7 @@ export interface IpcDeps {
   index: ScryfallIndexDb;
   bootstrap: BootstrapOrchestrator;
   artCrops: ArtCropOrchestrator;
+  artCropsDir: string;
   scanDb: ScanDb;
   settingsDb: SettingsDb;
   thumbnailsDir: string;
@@ -103,7 +115,7 @@ export interface IpcDeps {
 }
 
 export function registerIpcHandlers(deps: IpcDeps): void {
-  const { catalogue, index, bootstrap, artCrops, scanDb, settingsDb, thumbnailsDir, catalogueDbPath, appVersion, currentSchemaVersion, processingQueue, reviewQueueDb, broadcastReviewCount } = deps;
+  const { catalogue, index, bootstrap, artCrops, artCropsDir, scanDb, settingsDb, thumbnailsDir, catalogueDbPath, appVersion, currentSchemaVersion, processingQueue, reviewQueueDb, broadcastReviewCount } = deps;
 
   ipcMain.handle(
     IPC_CHANNELS.exportCsv,
@@ -179,7 +191,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
           language: req.language ?? 'EN',
           price_usd: card.price_usd,
         });
-        return { ok: true, id: result.id, created: result.created, card: findCard(catalogue, result.id) };
+        return { ok: true, id: result.id, created: result.created, card: findCard(catalogue, result.id, artCropsDir) };
       } catch (err) {
         return { ok: false, error: errorMessage(err) };
       }
@@ -205,7 +217,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
           language: req.language ?? 'EN',
           price_usd: indexCard.price_usd,
         });
-        return { ok: true, id: result.id, created: result.created, card: findCard(catalogue, result.id) };
+        return { ok: true, id: result.id, created: result.created, card: findCard(catalogue, result.id, artCropsDir) };
       } catch (err) {
         return { ok: false, error: errorMessage(err) };
       }
@@ -214,7 +226,7 @@ export function registerIpcHandlers(deps: IpcDeps): void {
 
   ipcMain.handle(IPC_CHANNELS.listCards, async (): Promise<ListCardsResponse> => {
     try {
-      return { ok: true, cards: catalogue.listCards() };
+      return { ok: true, cards: catalogue.listCards(artCropsDir) };
     } catch (err) {
       return { ok: false, error: errorMessage(err) };
     }
@@ -762,6 +774,115 @@ export function registerIpcHandlers(deps: IpcDeps): void {
       }
     },
   );
+
+  ipcMain.handle(
+    IPC_CHANNELS.cardUpdateField,
+    async (_event, req: CardUpdateFieldRequest): Promise<CardUpdateFieldResponse> => {
+      try {
+        switch (req.field) {
+          case 'quantity':
+            catalogue.updateCardQty(req.cardId, Number(req.value));
+            break;
+          case 'foil':
+            catalogue.updateCardFoilField(req.cardId, String(req.value));
+            break;
+          case 'condition':
+            catalogue.updateCardCondition(req.cardId, String(req.value));
+            break;
+          case 'notes':
+            catalogue.updateCardNotes(req.cardId, req.value != null ? String(req.value) : null);
+            break;
+        }
+        return { ok: true, card: findCard(catalogue, req.cardId, artCropsDir) };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.cardBulkEdit,
+    async (_event, req: CardBulkEditRequest): Promise<CardBulkEditResponse> => {
+      try {
+        const allCards = catalogue.listCards();
+        const selectedRows = allCards.filter((c) => req.cardIds.includes(c.id));
+        const actions = planBulkEdit(selectedRows, {
+          qty: req.qty,
+          foil: req.foil,
+          condition: req.condition,
+          collectionId: req.collectionId,
+        });
+        const tx = catalogue.raw.transaction(() => {
+          for (const action of actions) {
+            switch (action.kind) {
+              case 'update-qty':
+                catalogue.updateCardQty(action.cardId, action.qty);
+                break;
+              case 'update-foil':
+                catalogue.updateCardFoilField(action.cardId, action.foil);
+                break;
+              case 'update-condition':
+                catalogue.updateCardCondition(action.cardId, action.condition);
+                break;
+              case 'update-notes':
+                catalogue.updateCardNotes(action.cardId, action.notes);
+                break;
+              case 'update-collection':
+                catalogue.executeAction({ kind: 'update-collection', cardId: action.cardId, collectionId: action.collectionId });
+                break;
+            }
+          }
+        });
+        tx();
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.cardDelete,
+    async (_event, req: CardDeleteRequest): Promise<CardDeleteResponse> => {
+      try {
+        catalogue.deleteCardById(req.cardId);
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.cardAddToReview,
+    async (_event, req: CardAddToReviewRequest): Promise<CardAddToReviewResponse> => {
+      try {
+        reviewQueueDb.insertReviewItem({
+          scanId: null,
+          reason: 'manual_flagged',
+          candidatesJson: '[]',
+          createdAt: Date.now(),
+        });
+        catalogue.markCardNeedsReview(req.cardId);
+        broadcastReviewCount();
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.openExternal,
+    async (_event, req: OpenExternalRequest): Promise<OpenExternalResponse> => {
+      try {
+        await shell.openExternal(req.url);
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: errorMessage(err) };
+      }
+    },
+  );
 }
 
 export function broadcastBootstrapProgress(
@@ -837,8 +958,8 @@ function pickFoil(available: Foil[], requested?: Foil): Foil {
   return available[0] ?? 'normal';
 }
 
-function findCard(db: CatalogueDb, id: number): CardForRenderer {
-  const all = db.listCards();
+function findCard(db: CatalogueDb, id: number, artCropsDir?: string): CardForRenderer {
+  const all = db.listCards(artCropsDir);
   const card = all.find((c) => c.id === id);
   if (!card) throw new Error(`Card ${id} not found after insert/bump`);
   return card;

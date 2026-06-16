@@ -2121,3 +2121,177 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 /* ── end Settings page ────────────────────────────────────────── */
+
+/* ── Catalogue table polish ───────────────────────────────────── */
+
+/* Checkbox column */
+.col-check {
+  width: 28px;
+  padding: 0 4px;
+  text-align: center;
+}
+
+/* Thumb column */
+.col-thumb {
+  width: 44px;
+}
+
+.thumb-img {
+  width: 36px;
+  height: 26px;
+  object-fit: cover;
+  border-radius: 2px;
+  display: block;
+}
+
+/* Sortable column headers */
+.col-th--sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.col-th--sortable:hover {
+  color: var(--fg);
+}
+
+.col-th--sort-asc::after {
+  content: ' ▲';
+  color: var(--accent);
+  font-size: 10px;
+}
+
+.col-th--sort-desc::after {
+  content: ' ▼';
+  color: var(--accent);
+  font-size: 10px;
+}
+
+/* Row needs-review styling */
+.row-needs-review {
+  border-left: 3px solid var(--warn);
+}
+
+.row-needs-review td:first-child {
+  padding-left: 5px;
+}
+
+/* Review chip badge in name cell */
+.review-chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--warn);
+  color: #1a1400;
+  font-size: 10px;
+  font-weight: 600;
+  vertical-align: middle;
+  line-height: 1.4;
+}
+
+/* Row selection */
+tr.is-selected > td {
+  background: rgba(122, 162, 255, 0.08);
+}
+
+/* Editable cells */
+.cell-editable {
+  cursor: text;
+}
+
+.cell-editable:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cell-editable.is-editing {
+  padding: 2px;
+}
+
+.inline-edit-input,
+.inline-edit-select {
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font-size: 13px;
+  padding: 2px 4px;
+  width: 100%;
+}
+
+.inline-edit-input:focus,
+.inline-edit-select:focus {
+  outline: none;
+  border-color: var(--accent-strong);
+}
+
+/* Catalogue header actions */
+.catalogue-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Bulk edit wrap */
+.bulk-edit-wrap {
+  position: relative;
+}
+
+.bulk-edit-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 200;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  min-width: 220px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.bulk-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.bulk-edit-label {
+  font-size: 12px;
+  color: var(--fg-muted);
+  min-width: 70px;
+}
+
+.bulk-edit-input,
+.bulk-edit-select {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--fg);
+  font-size: 13px;
+  padding: 4px 6px;
+}
+
+.bulk-edit-input:focus,
+.bulk-edit-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.bulk-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+
+/* Context menu divider */
+.context-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+/* ── end Catalogue table polish ───────────────────────────────── */

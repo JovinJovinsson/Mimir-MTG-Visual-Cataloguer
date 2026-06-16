@@ -78,6 +78,7 @@ export interface CardForRenderer {
   last_seen_at: number;
   needs_review: boolean;
   review_reasons: string | null;
+  art_crop_path: string | null;
 }
 
 export interface CollectionRow {

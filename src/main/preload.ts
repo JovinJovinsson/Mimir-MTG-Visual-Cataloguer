@@ -5,6 +5,14 @@ import {
   type BackupExportResponse,
   type BackupRestoreResponse,
   type BackupAutoRunResponse,
+  type CardAddToReviewRequest,
+  type CardAddToReviewResponse,
+  type CardBulkEditRequest,
+  type CardBulkEditResponse,
+  type CardDeleteRequest,
+  type CardDeleteResponse,
+  type CardUpdateFieldRequest,
+  type CardUpdateFieldResponse,
   type ExportCsvRequest,
   type ExportCsvResponse,
   type AddCardByIdRequest,
@@ -31,6 +39,8 @@ import {
   type ListCardsResponse,
   type ListRecentScansResponse,
   type MimirApi,
+  type OpenExternalRequest,
+  type OpenExternalResponse,
   type ReviewBulkConfirmFoilRequest,
   type ReviewBulkConfirmFoilResponse,
   type ReviewBulkConfirmSetRequest,
@@ -165,6 +175,16 @@ const api: MimirApi = {
     ipcRenderer.invoke(IPC_CHANNELS.backupRestore),
   backupAutoRun: (): Promise<BackupAutoRunResponse> =>
     ipcRenderer.invoke(IPC_CHANNELS.backupAutoRun),
+  cardUpdateField: (req: CardUpdateFieldRequest): Promise<CardUpdateFieldResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.cardUpdateField, req),
+  cardBulkEdit: (req: CardBulkEditRequest): Promise<CardBulkEditResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.cardBulkEdit, req),
+  cardDelete: (req: CardDeleteRequest): Promise<CardDeleteResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.cardDelete, req),
+  cardAddToReview: (req: CardAddToReviewRequest): Promise<CardAddToReviewResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.cardAddToReview, req),
+  openExternal: (req: OpenExternalRequest): Promise<OpenExternalResponse> =>
+    ipcRenderer.invoke(IPC_CHANNELS.openExternal, req),
 };
 
 contextBridge.exposeInMainWorld('mimir', api);

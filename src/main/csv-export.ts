@@ -214,6 +214,7 @@ export function parseMimirNativeCsv(csv: string): ExportCard[] {
       review_reasons: nullStr(review_reasons ?? ''),
       first_seen_at: Number(first_seen_at),
       last_seen_at: Number(last_seen_at),
+      art_crop_path: null,
     };
   });
 }

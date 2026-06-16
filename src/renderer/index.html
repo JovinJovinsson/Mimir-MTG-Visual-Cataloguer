@@ -67,6 +67,10 @@
       <!-- Context menu for card rows -->
       <div id="card-context-menu" class="context-menu" hidden>
         <button class="context-menu-item" id="ctx-move-to-collection">Move to collection…</button>
+        <button class="context-menu-item" id="ctx-add-to-review">Add to review</button>
+        <button class="context-menu-item" id="ctx-open-in-scryfall">Open in Scryfall</button>
+        <div class="context-menu-divider"></div>
+        <button class="context-menu-item context-menu-item--danger" id="ctx-delete-card">Delete</button>
       </div>
 
       <!-- Move-to-collection picker -->
@@ -142,7 +146,48 @@
               </div>
               <button type="submit" disabled>Add</button>
             </form>
-            <button id="catalogue-export-btn" class="btn btn--secondary">Export…</button>
+            <div class="catalogue-header-actions">
+              <div class="bulk-edit-wrap" id="bulk-edit-wrap" hidden>
+                <button id="bulk-edit-btn" class="btn btn--secondary">Edit selected (<span id="bulk-count">0</span>)</button>
+                <div id="bulk-edit-popover" class="bulk-edit-popover" hidden>
+                  <div class="bulk-edit-row">
+                    <label class="bulk-edit-label" for="bulk-qty">Qty</label>
+                    <input id="bulk-qty" type="number" min="0" class="bulk-edit-input" placeholder="—" />
+                  </div>
+                  <div class="bulk-edit-row">
+                    <label class="bulk-edit-label" for="bulk-foil">Foil</label>
+                    <select id="bulk-foil" class="bulk-edit-select">
+                      <option value="">— keep —</option>
+                      <option value="normal">Normal</option>
+                      <option value="foil">Foil</option>
+                      <option value="etched">Etched</option>
+                    </select>
+                  </div>
+                  <div class="bulk-edit-row">
+                    <label class="bulk-edit-label" for="bulk-condition">Condition</label>
+                    <select id="bulk-condition" class="bulk-edit-select">
+                      <option value="">— keep —</option>
+                      <option value="NM">NM</option>
+                      <option value="LP">LP</option>
+                      <option value="MP">MP</option>
+                      <option value="HP">HP</option>
+                      <option value="DMG">DMG</option>
+                    </select>
+                  </div>
+                  <div class="bulk-edit-row">
+                    <label class="bulk-edit-label" for="bulk-collection">Collection</label>
+                    <select id="bulk-collection" class="bulk-edit-select">
+                      <option value="">— keep —</option>
+                    </select>
+                  </div>
+                  <div class="bulk-edit-actions">
+                    <button id="bulk-edit-apply-btn" class="btn btn--primary">Apply</button>
+                    <button id="bulk-edit-cancel-btn" class="btn btn--secondary">Cancel</button>
+                  </div>
+                </div>
+              </div>
+              <button id="catalogue-export-btn" class="btn btn--secondary">Export…</button>
+            </div>
           </header>
           <div id="status" class="status" role="status" aria-live="polite"></div>
 
@@ -170,20 +215,21 @@
             <table id="catalogue-table">
               <thead>
                 <tr>
+                  <th class="col-check"><input type="checkbox" id="catalogue-select-all" title="Select all" /></th>
                   <th class="col-thumb">Thumb</th>
-                  <th class="col-name">Name</th>
-                  <th class="col-set">Set</th>
-                  <th class="col-cn">#</th>
-                  <th class="col-qty">Qty</th>
-                  <th class="col-foil">Foil</th>
-                  <th class="col-cond">Cond</th>
-                  <th class="col-price">Price (USD)</th>
-                  <th class="col-seen">Last seen</th>
+                  <th class="col-name col-th--sortable" data-sort-field="name">Name</th>
+                  <th class="col-set col-th--sortable" data-sort-field="set_code">Set</th>
+                  <th class="col-cn col-th--sortable" data-sort-field="collector_number">#</th>
+                  <th class="col-qty col-th--sortable" data-sort-field="quantity">Qty</th>
+                  <th class="col-foil col-th--sortable" data-sort-field="foil">Foil</th>
+                  <th class="col-cond col-th--sortable" data-sort-field="condition">Cond</th>
+                  <th class="col-price col-th--sortable" data-sort-field="price_usd">Price (USD)</th>
+                  <th class="col-seen col-th--sortable" data-sort-field="last_seen_at">Last seen</th>
                 </tr>
               </thead>
               <tbody id="catalogue-body">
                 <tr class="empty-row">
-                  <td colspan="9">No cards yet — add one by name above.</td>
+                  <td colspan="10">No cards yet — add one by name above.</td>
                 </tr>
               </tbody>
             </table>

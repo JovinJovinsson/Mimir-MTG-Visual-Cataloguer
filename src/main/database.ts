@@ -23,7 +23,13 @@ export interface CatalogueDb {
   findCardInCollection(scryfallId: string, foil: string, condition: string, language: string, collectionId: number): CardsRow | null;
   updateCardFields(cardId: number, updates: { foil: string; language: string }): void;
   clearCardReviewState(cardId: number): void;
-  listCards(): CardForRenderer[];
+  updateCardQty(cardId: number, qty: number): void;
+  updateCardFoilField(cardId: number, foil: string): void;
+  updateCardCondition(cardId: number, condition: string): void;
+  updateCardNotes(cardId: number, notes: string | null): void;
+  markCardNeedsReview(cardId: number): void;
+  deleteCardById(cardId: number): void;
+  listCards(artCropsDir?: string): CardForRenderer[];
   listCollections(): CollectionForRenderer[];
   createCollection(name: string): number;
   renameCollection(id: number, name: string): void;
@@ -94,6 +100,30 @@ function wrap(db: Database.Database): CatalogueDb {
 
   const clearCardReviewStateStmt = db.prepare(
     `UPDATE cards SET needs_review = 0, review_reasons = NULL WHERE id = ?`,
+  );
+
+  const updateQtyStmt = db.prepare(
+    `UPDATE cards SET quantity = ? WHERE id = ?`,
+  );
+
+  const updateFoilFieldStmt = db.prepare(
+    `UPDATE cards SET foil = ? WHERE id = ?`,
+  );
+
+  const updateConditionStmt = db.prepare(
+    `UPDATE cards SET condition = ? WHERE id = ?`,
+  );
+
+  const updateNotesStmt = db.prepare(
+    `UPDATE cards SET notes = ? WHERE id = ?`,
+  );
+
+  const markNeedsReviewStmt = db.prepare(
+    `UPDATE cards SET needs_review = 1, review_reasons = 'manual_flagged' WHERE id = ?`,
+  );
+
+  const deleteCardByIdStmt = db.prepare(
+    `DELETE FROM cards WHERE id = ?`,
   );
 
   const listAll = db.prepare<[], CardsRow>(
@@ -210,27 +240,59 @@ function wrap(db: Database.Database): CatalogueDb {
       clearCardReviewStateStmt.run(cardId);
     },
 
-    listCards(): CardForRenderer[] {
+    updateCardQty(cardId: number, qty: number): void {
+      updateQtyStmt.run(qty, cardId);
+    },
+
+    updateCardFoilField(cardId: number, foil: string): void {
+      updateFoilFieldStmt.run(foil, cardId);
+    },
+
+    updateCardCondition(cardId: number, condition: string): void {
+      updateConditionStmt.run(condition, cardId);
+    },
+
+    updateCardNotes(cardId: number, notes: string | null): void {
+      updateNotesStmt.run(notes, cardId);
+    },
+
+    markCardNeedsReview(cardId: number): void {
+      markNeedsReviewStmt.run(cardId);
+    },
+
+    deleteCardById(cardId: number): void {
+      deleteCardByIdStmt.run(cardId);
+    },
+
+    listCards(artCropsDir?: string): CardForRenderer[] {
       const rows = listAll.all();
-      return rows.map((r) => ({
-        id: r.id,
-        scryfall_id: r.scryfall_id,
-        name: r.name,
-        set_code: r.set_code,
-        set_name: r.set_name,
-        collector_number: r.collector_number,
-        collection_id: r.collection_id,
-        foil: r.foil,
-        condition: r.condition,
-        language: r.language,
-        quantity: r.quantity,
-        price_usd: r.price_at_first_scan_usd,
-        notes: r.notes,
-        first_seen_at: r.first_seen_at,
-        last_seen_at: r.last_seen_at,
-        needs_review: r.needs_review === 1,
-        review_reasons: r.review_reasons,
-      }));
+      return rows.map((r) => {
+        let artCropPath: string | null = null;
+        if (artCropsDir) {
+          const p = join(artCropsDir, r.set_code, `${r.scryfall_id}.jpg`);
+          if (existsSync(p)) artCropPath = p;
+        }
+        return {
+          id: r.id,
+          scryfall_id: r.scryfall_id,
+          name: r.name,
+          set_code: r.set_code,
+          set_name: r.set_name,
+          collector_number: r.collector_number,
+          collection_id: r.collection_id,
+          foil: r.foil,
+          condition: r.condition,
+          language: r.language,
+          quantity: r.quantity,
+          price_usd: r.price_at_first_scan_usd,
+          notes: r.notes,
+          first_seen_at: r.first_seen_at,
+          last_seen_at: r.last_seen_at,
+          needs_review: r.needs_review === 1,
+          review_reasons: r.review_reasons,
+          art_crop_path: artCropPath,
+        };
+      });
     },
 
     listCollections(): CollectionForRenderer[] {
