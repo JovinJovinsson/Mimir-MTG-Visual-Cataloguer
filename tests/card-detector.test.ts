@@ -128,7 +128,7 @@ describe('step — detecting phase', () => {
   it('resets stableMs on jitter', () => {
     let state = initState();
     ({ state } = step(state, { quad: Q1, deltaMs: 16 }));
-    ({ state } = step(state, { quad: Q1_STABLE, deltaMs: 200 }));
+    ({ state } = step(state, { quad: Q1_STABLE, deltaMs: 100 }));
     expect(state.stableMs).toBeGreaterThan(0);
     ({ state } = step(state, { quad: Q1_JITTER, deltaMs: 16 }));
     expect(state.stableMs).toBe(0);
