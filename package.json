@@ -68,7 +68,7 @@
     "electron-builder": "^26.15.3",
     "esbuild": "^0.24.0",
     "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "vitest": "^3.2.6"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",
