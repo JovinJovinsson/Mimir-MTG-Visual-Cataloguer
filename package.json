@@ -51,7 +51,8 @@
     },
     "linux": {
       "target": ["AppImage", "deb"],
-      "category": "Utility"
+      "category": "Utility",
+      "maintainer": "JovinJovinsson <yggdragamesstudio@gmail.com>"
     },
     "nsis": {
       "oneClick": false,
