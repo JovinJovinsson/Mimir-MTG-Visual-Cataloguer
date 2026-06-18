@@ -6,9 +6,9 @@
   "author": "JovinJovinsson",
   "private": true,
   "scripts": {
-    "build:main": "esbuild src/main/main.ts --bundle --outfile=dist/main/main.js --platform=node --format=cjs --target=node20 --external:electron --external:better-sqlite3 --external:electron-updater",
-    "build:worker": "esbuild src/main/bulk-parse-worker.ts --bundle --outfile=dist/main/bulk-parse-worker.js --platform=node --format=cjs --target=node20",
-    "build:preload": "esbuild src/main/preload.ts --bundle --outfile=dist/main/preload.js --platform=node --format=cjs --target=node20 --external:electron",
+    "build:main": "esbuild src/main/main.ts --bundle --outfile=dist/main/main.js --platform=node --format=cjs --target=node24 --external:electron --external:better-sqlite3 --external:electron-updater",
+    "build:worker": "esbuild src/main/bulk-parse-worker.ts --bundle --outfile=dist/main/bulk-parse-worker.js --platform=node --format=cjs --target=node24",
+    "build:preload": "esbuild src/main/preload.ts --bundle --outfile=dist/main/preload.js --platform=node --format=cjs --target=node24 --external:electron",
     "build:renderer": "esbuild src/renderer/renderer.ts --bundle --outfile=dist/renderer/renderer.js --platform=browser --format=iife --target=es2022",
     "build:assets": "node scripts/copy-assets.mjs",
     "build": "npm run build:main && npm run build:worker && npm run build:preload && npm run build:renderer && npm run build:assets",
@@ -30,7 +30,8 @@
     },
     "files": [
       "dist/**/*",
-      "package.json"
+      "package.json",
+      "!**/test_extension.node"
     ],
     "publish": {
       "provider": "github",
