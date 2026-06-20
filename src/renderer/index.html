@@ -97,6 +97,18 @@
         </div>
       </div>
 
+      <!-- Delete card(s) confirmation dialog -->
+      <div id="delete-card-dialog" class="modal-overlay" hidden>
+        <div class="modal-box">
+          <h3 class="modal-title" id="delete-card-title">Delete card</h3>
+          <p id="delete-card-message" class="modal-message"></p>
+          <div class="modal-actions">
+            <button id="delete-card-confirm-btn" class="btn btn--danger">Delete</button>
+            <button id="delete-card-cancel-btn" class="btn btn--secondary">Cancel</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Export dialog -->
       <div id="export-dialog" class="modal-overlay" hidden>
         <div class="modal-box">
@@ -149,6 +161,7 @@
             <div class="catalogue-header-actions">
               <div class="bulk-edit-wrap" id="bulk-edit-wrap" hidden>
                 <button id="bulk-edit-btn" class="btn btn--secondary">Edit selected (<span id="bulk-count">0</span>)</button>
+                <button id="bulk-delete-btn" class="btn btn--danger">Delete (<span id="bulk-delete-count">0</span>)</button>
                 <div id="bulk-edit-popover" class="bulk-edit-popover" hidden>
                   <div class="bulk-edit-row">
                     <label class="bulk-edit-label" for="bulk-qty">Qty</label>
@@ -245,11 +258,12 @@
                   <th class="col-cond col-th--sortable" data-sort-field="condition">Cond</th>
                   <th class="col-price col-th--sortable" data-sort-field="price_usd">Price (USD)</th>
                   <th class="col-seen col-th--sortable" data-sort-field="last_seen_at">Last seen</th>
+                  <th class="col-actions" aria-label="Actions"></th>
                 </tr>
               </thead>
               <tbody id="catalogue-body">
                 <tr class="empty-row">
-                  <td colspan="10">No cards yet — add one by name above.</td>
+                  <td colspan="11">No cards yet — add one by name above.</td>
                 </tr>
               </tbody>
             </table>

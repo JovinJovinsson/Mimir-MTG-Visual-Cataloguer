@@ -1121,7 +1121,34 @@ function renderRow(card: CardForRenderer, rowIdx: number): HTMLTableRowElement {
   tdSeen.textContent = formatLastSeen(card.last_seen_at);
   tr.appendChild(tdSeen);
 
+  // Actions (delete)
+  const tdActions = document.createElement('td');
+  tdActions.className = 'col-actions';
+  tdActions.appendChild(makeDeleteButton(card, 'row-delete-btn'));
+  tr.appendChild(tdActions);
+
   return tr;
+}
+
+const TRASH_ICON_SVG =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<polyline points="3 6 5 6 21 6"/>' +
+  '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>' +
+  '</svg>';
+
+function makeDeleteButton(card: CardForRenderer, className: string): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = className;
+  btn.title = `Delete ${card.name}`;
+  btn.setAttribute('aria-label', `Delete ${card.name}`);
+  btn.innerHTML = TRASH_ICON_SVG;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    showDeleteCardDialog(card);
+  });
+  return btn;
 }
 
 function spanSet(code: string): Node {
@@ -1235,7 +1262,7 @@ function renderEmpty(): void {
   const tr = document.createElement('tr');
   tr.className = 'empty-row';
   const td = document.createElement('td');
-  td.colSpan = 10;
+  td.colSpan = 11;
   td.textContent = 'No cards yet — add one by name above.';
   tr.appendChild(td);
   tableBody.appendChild(tr);
@@ -1273,6 +1300,8 @@ function renderTile(card: CardForRenderer, idx: number): HTMLDivElement {
   const ring = document.createElement('div');
   ring.className = 'tile-card__select-ring';
   tile.appendChild(ring);
+
+  tile.appendChild(makeDeleteButton(card, 'tile-card__delete'));
 
   if (card.needs_review) {
     const badge = document.createElement('div');
@@ -1471,6 +1500,8 @@ let lastClickedCatalogueIdx = -1;
 const catalogueSelectAll = document.getElementById('catalogue-select-all') as HTMLInputElement;
 const bulkEditWrap = document.getElementById('bulk-edit-wrap') as HTMLDivElement;
 const bulkCountEl = document.getElementById('bulk-count') as HTMLSpanElement;
+const bulkDeleteCountEl = document.getElementById('bulk-delete-count') as HTMLSpanElement;
+const bulkDeleteBtn = document.getElementById('bulk-delete-btn') as HTMLButtonElement;
 const bulkEditBtn = document.getElementById('bulk-edit-btn') as HTMLButtonElement;
 const bulkEditPopover = document.getElementById('bulk-edit-popover') as HTMLDivElement;
 const bulkQtyInput = document.getElementById('bulk-qty') as HTMLInputElement;
@@ -1483,6 +1514,7 @@ const bulkCancelBtn = document.getElementById('bulk-edit-cancel-btn') as HTMLBut
 function updateSelectionUI(): void {
   const count = selectedCardIds.size;
   bulkCountEl.textContent = String(count);
+  bulkDeleteCountEl.textContent = String(count);
   bulkEditWrap.hidden = count === 0;
 
   const visibleCards = getCurrentVisibleCards();
@@ -1570,6 +1602,12 @@ bulkEditBtn.addEventListener('click', (e) => {
 
 bulkCancelBtn.addEventListener('click', () => {
   bulkEditPopover.hidden = true;
+});
+
+bulkDeleteBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  bulkEditPopover.hidden = true;
+  showBulkDeleteCardsDialog();
 });
 
 bulkApplyBtn.addEventListener('click', async () => {
@@ -1665,6 +1703,12 @@ const deleteMoveCardsBtn = document.getElementById('delete-move-cards-btn') as H
 const deleteCardsBtn = document.getElementById('delete-cards-btn') as HTMLButtonElement;
 const deleteCollectionCancelBtn = document.getElementById('delete-collection-cancel') as HTMLButtonElement;
 
+const deleteCardDialog = document.getElementById('delete-card-dialog') as HTMLDivElement;
+const deleteCardTitle = document.getElementById('delete-card-title') as HTMLHeadingElement;
+const deleteCardMessage = document.getElementById('delete-card-message') as HTMLParagraphElement;
+const deleteCardConfirmBtn = document.getElementById('delete-card-confirm-btn') as HTMLButtonElement;
+const deleteCardCancelBtn = document.getElementById('delete-card-cancel-btn') as HTMLButtonElement;
+
 let collectionsCache: CollectionForRenderer[] = [];
 let ctxCollectionId: number | null = null;
 let ctxCard: CardForRenderer | null = null;
@@ -1746,13 +1790,62 @@ ctxOpenInScryfallBtn.addEventListener('click', async (e) => {
   await window.mimir.openExternal({ url });
 });
 
-ctxDeleteCardBtn.addEventListener('click', async (e) => {
+ctxDeleteCardBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   hideAllContextMenus();
-  if (ctxCardId == null) return;
-  const res = await window.mimir.cardDelete({ cardId: ctxCardId });
-  if (!res.ok) { setStatus(res.error, 'error'); return; }
-  selectedCardIds.delete(ctxCardId);
+  if (!ctxCard) return;
+  showDeleteCardDialog(ctxCard);
+});
+
+// ── Delete card(s) confirmation ─────────────────────────────────────────────────
+
+let pendingDeleteCardIds: number[] = [];
+
+function showDeleteCardDialog(card: CardForRenderer): void {
+  pendingDeleteCardIds = [card.id];
+  deleteCardTitle.textContent = 'Delete card';
+  deleteCardMessage.textContent = `Permanently delete "${card.name}"? This cannot be undone.`;
+  deleteCardDialog.hidden = false;
+}
+
+function showBulkDeleteCardsDialog(): void {
+  const ids = [...selectedCardIds];
+  if (ids.length === 0) return;
+  pendingDeleteCardIds = ids;
+  deleteCardTitle.textContent = ids.length === 1 ? 'Delete card' : 'Delete cards';
+  deleteCardMessage.textContent =
+    `Permanently delete ${ids.length} card${ids.length === 1 ? '' : 's'}? This cannot be undone.`;
+  deleteCardDialog.hidden = false;
+}
+
+deleteCardCancelBtn.addEventListener('click', () => {
+  pendingDeleteCardIds = [];
+  deleteCardDialog.hidden = true;
+});
+
+deleteCardConfirmBtn.addEventListener('click', async () => {
+  const ids = pendingDeleteCardIds;
+  pendingDeleteCardIds = [];
+  deleteCardDialog.hidden = true;
+  if (ids.length === 0) return;
+
+  deleteCardConfirmBtn.disabled = true;
+  let failed = 0;
+  for (const id of ids) {
+    const res = await window.mimir.cardDelete({ cardId: id });
+    if (res.ok) {
+      selectedCardIds.delete(id);
+    } else {
+      failed++;
+      setStatus(res.error, 'error');
+    }
+  }
+  deleteCardConfirmBtn.disabled = false;
+  if (failed === 0) {
+    const n = ids.length;
+    setStatus(`Deleted ${n} card${n === 1 ? '' : 's'}.`, 'ok');
+  }
+  lastClickedCatalogueIdx = -1;
   await refresh();
   updateSelectionUI();
 });

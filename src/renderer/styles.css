@@ -638,6 +638,34 @@ tbody tr:last-child td { border-bottom: none; }
 .col-cn, .col-qty, .col-foil, .col-cond { width: 70px; }
 .col-set { width: 80px; }
 .col-price, .col-seen { width: 120px; }
+.col-actions { width: 44px; text-align: center; }
+
+.row-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s, background 0.12s, border-color 0.12s;
+}
+
+tbody tr:hover .row-delete-btn,
+.row-delete-btn:focus-visible {
+  opacity: 1;
+}
+
+.row-delete-btn:hover {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
 
 .thumb-placeholder {
   width: 40px;
@@ -2527,6 +2555,35 @@ tr.is-selected > td {
   font-size: 10px;
   color: rgba(255, 255, 255, 0.55);
   margin-left: auto;
+}
+
+.tile-card__delete {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s;
+  z-index: 2;
+}
+
+.tile-card:hover .tile-card__delete,
+.tile-card__delete:focus-visible {
+  opacity: 1;
+}
+
+.tile-card__delete:hover {
+  background: var(--danger);
 }
 
 .tile-card__review-badge {
