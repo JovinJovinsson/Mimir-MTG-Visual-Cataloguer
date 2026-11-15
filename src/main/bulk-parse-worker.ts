@@ -1,5 +1,7 @@
 import { parentPort, workerData } from 'node:worker_threads';
 import { get as httpsGet } from 'node:https';
+import { createGunzip } from 'node:zlib';
+import { createInterface } from 'node:readline';
 import type { ScryfallBulkCard } from './scryfall-bootstrap.js';
 
 const SCRYFALL_USER_AGENT =
@@ -15,41 +17,6 @@ const { downloadUri } = workerData as { downloadUri: string };
 
 let lastProgressAt = 0;
 
-// Scan the full Buffer at byte level. ASCII structure bytes ({, }, ", \) are
-// always < 0x80 in UTF-8, so multi-byte code points can never collide with
-// them — byte-level scanning is safe and avoids any string-length limit.
-function parseCards(buf: Buffer): void {
-  let depth = 0;
-  let inStr = false;
-  let esc = false;
-  let arrStarted = false;
-  let objStart = -1;
-  let batch: ScryfallBulkCard[] = [];
-
-  for (let i = 0; i < buf.length; i++) {
-    const b = buf[i];
-    if (esc) { esc = false; continue; }
-    if (b === 0x5c && inStr) { esc = true; continue; }           // '\'
-    if (b === 0x22) { inStr = !inStr; continue; }                  // '"'
-    if (inStr) continue;
-    if (!arrStarted) { if (b === 0x5b) arrStarted = true; continue; } // '['
-    if (b === 0x7b) { if (depth === 0) objStart = i; depth++; }       // '{'
-    else if (b === 0x7d && depth > 0) {                                // '}'
-      depth--;
-      if (depth === 0 && objStart >= 0) {
-        batch.push(JSON.parse(buf.toString('utf8', objStart, i + 1)) as ScryfallBulkCard);
-        objStart = -1;
-        if (batch.length >= BATCH_SIZE) {
-          parentPort!.postMessage({ type: 'cards', cards: batch });
-          batch = [];
-        }
-      }
-    }
-  }
-
-  if (batch.length > 0) parentPort!.postMessage({ type: 'cards', cards: batch });
-}
-
 const req = httpsGet(downloadUri, { headers: politeHeaders() }, (res) => {
   if (res.statusCode !== 200) {
     parentPort!.postMessage({
@@ -63,10 +30,15 @@ const req = httpsGet(downloadUri, { headers: politeHeaders() }, (res) => {
 
   const total = res.headers['content-length'] ? Number(res.headers['content-length']) : null;
   let downloaded = 0;
-  const chunks: Buffer[] = [];
+  let batch: ScryfallBulkCard[] = [];
+  const flush = () => {
+    if (batch.length > 0) parentPort!.postMessage({ type: 'cards', cards: batch });
+    batch = [];
+  };
+  const fail = (err: Error) => parentPort!.postMessage({ type: 'error', message: err.message });
 
+  // Progress counts compressed bytes, matching content-length / manifest size.
   res.on('data', (chunk: Buffer) => {
-    chunks.push(chunk);
     downloaded += chunk.length;
     if (downloaded - lastProgressAt >= PROGRESS_INTERVAL_BYTES) {
       lastProgressAt = downloaded;
@@ -74,21 +46,25 @@ const req = httpsGet(downloadUri, { headers: politeHeaders() }, (res) => {
     }
   });
 
-  res.on('error', (err: Error) => {
-    parentPort!.postMessage({ type: 'error', message: err.message });
-  });
+  const gunzip = createGunzip();
+  res.on('error', fail);
+  gunzip.on('error', fail);
+  res.pipe(gunzip);
 
-  res.on('end', () => {
-    parentPort!.postMessage({ type: 'progress', downloaded, total: downloaded });
+  const rl = createInterface({ input: gunzip, crlfDelay: Infinity });
+  rl.on('line', (line) => {
+    if (!line.trim()) return;
     try {
-      parseCards(Buffer.concat(chunks));
-      parentPort!.postMessage({ type: 'done' });
+      batch.push(JSON.parse(line) as ScryfallBulkCard);
     } catch (err) {
-      parentPort!.postMessage({
-        type: 'error',
-        message: err instanceof Error ? err.message : String(err),
-      });
+      return fail(err as Error);
     }
+    if (batch.length >= BATCH_SIZE) flush();
+  });
+  rl.on('close', () => {
+    flush();
+    parentPort!.postMessage({ type: 'progress', downloaded, total: downloaded });
+    parentPort!.postMessage({ type: 'done' });
   });
 });
 
