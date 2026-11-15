@@ -44,11 +44,21 @@ export async function fetchBulkDataManifest(
       parseRetryAfter(res),
     );
   }
-  const data = (await res.json()) as BulkDataManifest;
-  if (!data.download_uri) {
+  // Scryfall now serves gzipped JSONL via `jsonl_download_uri` / `compressed_size`.
+  const raw = (await res.json()) as Partial<BulkDataManifest> & {
+    jsonl_download_uri?: string;
+    compressed_size?: number;
+  };
+  const download_uri = raw.jsonl_download_uri ?? raw.download_uri;
+  if (!download_uri) {
     throw new Error('Scryfall bulk-data manifest missing download_uri');
   }
-  return data;
+  return {
+    type: raw.type ?? bulkType,
+    download_uri,
+    updated_at: raw.updated_at ?? '',
+    size: raw.compressed_size ?? raw.size ?? 0,
+  };
 }
 
 export async function fetchBulkData(
@@ -73,9 +83,8 @@ export async function fetchBulkData(
 export type DownloadProgressFn = (downloadedBytes: number, totalBytes: number | null) => void;
 
 // Spawns a Worker thread that downloads and parses the bulk JSON off the main
-// thread entirely. The worker byte-scans the raw Buffer (no 512 MB string
-// limit) and streams parsed cards back in batches so the main thread stays
-// responsive throughout.
+// thread entirely. The worker gunzips the JSONL stream line by line and sends
+// parsed cards back in batches so the main thread stays responsive.
 export function downloadBulkJson(
   downloadUri: string,
   onProgress?: DownloadProgressFn,

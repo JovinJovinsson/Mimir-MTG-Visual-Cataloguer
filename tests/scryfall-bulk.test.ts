@@ -16,9 +16,9 @@ function manifestResponse(): typeof fetch {
         json: async () => ({
           object: 'bulk_data',
           type: 'default_cards',
-          download_uri: 'https://data.scryfall.io/default-cards/default-cards.json',
+          jsonl_download_uri: 'https://data.scryfall.io/default-cards/default-cards.jsonl.gz',
           updated_at: '2026-06-13T00:00:00.000Z',
-          size: 1234,
+          compressed_size: 1234,
         }),
       } as Response;
     }
@@ -31,7 +31,7 @@ describe('fetchBulkDataManifest', () => {
     const fetchImpl = manifestResponse();
     const manifest = await fetchBulkDataManifest('default_cards', fetchImpl);
     expect(manifest.type).toBe('default_cards');
-    expect(manifest.download_uri).toMatch(/default-cards\.json/);
+    expect(manifest.download_uri).toMatch(/default-cards\.jsonl\.gz/);
     expect(manifest.size).toBe(1234);
   });
 
