@@ -16,6 +16,19 @@ A local-first desktop app for scanning and cataloguing Magic: The Gathering card
 - **Auto-backup** — scheduled ZIP backups of your catalogue to a folder of your choosing
 - **Offline-first** — all data lives in a local SQLite database; Scryfall is only contacted to refresh card data
 
+## Usage
+
+1. **First start:** Mimir downloads the Scryfall card data once (a few hundred MB). Wait for it to finish.
+2. **Scan page:** pick your camera. Optionally set the preset bar (Foil, Condition, Language, Destination collection) — it applies to every card scanned until you change it.
+3. **Scan cards hands-free:** hold a card in front of the camera. There is no scan button. An outline shows what is happening:
+   - **yellow** — card detected, waiting for it to hold still (~0.2 s)
+   - **green** — captured; the card is queued for recognition
+4. **Next card:** take the card away and show the next one. A card is only captured again after it has left the view, so keep each card still, on a dark plain background with even light (avoid glare).
+5. **Results:** confident matches go straight into the selected collection (default: *Inbox*). Uncertain ones go to the **Review** queue (press `R` on the Scan page). There: `1`–`9` pick a candidate, `Space` confirms, `S` skips, `D` dismisses.
+6. **Export:** use the catalogue/collection export for a CSV (Moxfield, Deckbox, Manabox or Mimir format).
+
+Capture sound and green flash can be toggled in Settings.
+
 ## Download
 
 Grab the latest release for your platform from the [Releases](../../releases) page:
